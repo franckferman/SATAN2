@@ -1,0 +1,43 @@
+# Rust build artifacts
+/target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+.DS_Store
+
+# Compiled binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+
+# Debug
+*.dSYM/
+*.su
+
+# Environment / secrets
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.toml
+
+# Crash dumps
+*.core
+*.dmp
+
+# Test artifacts
+/tmp/
+*.log
+
+# OS
+Thumbs.db
+desktop.ini

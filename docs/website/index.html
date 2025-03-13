@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="SATAN2 — Secure Anti-Forensics and Total Annihilation of iNformation. Advanced counter-forensics framework: multi-pass wiping, nested encryption, filesystem implosion, and forensic artifact forgery." />
+  <meta name="keywords" content="counter-forensics, anti-forensics, data destruction, encryption, red team, forensics, rust, privacy, security, OPSEC" />
+  <meta property="og:title" content="SATAN2 — Counter-Forensics Framework" />
+  <meta property="og:description" content="Multi-pass wiping. Nested encryption. Forensic artifact forgery. Terminate all traces." />
+  <meta name="theme-color" content="#0a0000" />
+  <title>SATAN2 ☢ Terminate All Traces</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Variables ─────────────────────────────────────────── */
+    :root {
+      --bg:          #050403;
+      --surface:     #0c0807;
+      --surface-h:   #120d0a;
+      --border:      #1c1209;
+      --border-h:    #2e1e10;
+      --red:         #c41a0e;
+      --red-bright:  #e8220f;
+      --red-dim:     rgba(196,26,14,0.12);
+      --red-glow:    rgba(196,26,14,0.25);
+      --nuclear:     #d4820a;
+      --nuclear-dim: rgba(212,130,10,0.12);
+      --white:       #e8e0d4;
+      --text:        #5a4f45;
+      --text-md:     #8a7a6e;
+      --text-bright: #c0b0a0;
+      --soviet:      #8b1010;
+      --type:        'Special Elite', serif;
+      --mono:        'JetBrains Mono', monospace;
+      --body:        'Inter', sans-serif;
+    }
+
+    /* ── Reset ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text-bright);
+      font-family: var(--body);
+      font-size: 15px;
+      line-height: 1.7;
+      border-top: 2px solid var(--red);
+      overflow-x: hidden;
+    }
+
+    /* Grain texture overlay */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.04;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    /* CRT scanlines */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9998;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.08) 2px,
+        rgba(0,0,0,0.08) 4px
+      );
+    }
+
+    /* ── Scrollbar ─────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--red); }
+
+    /* ── Canvas (rain) ─────────────────────────────────────── */
+    #rain {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      opacity: 0.07;
+      pointer-events: none;
+    }
+
+    /* ── Typography ────────────────────────────────────────── */
+    h1, h2, h3 { font-family: var(--type); letter-spacing: 0.04em; }
+    code, .mono { font-family: var(--mono); }
+
+    a { color: var(--red); text-decoration: none; transition: color 0.2s; }
+    a:hover { color: var(--red-bright); }
+
+    /* ── Header ────────────────────────────────────────────── */
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 56px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      background: rgba(5,4,3,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--red);
+      letter-spacing: 0.15em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .logo span { color: var(--text-md); font-weight: 300; }
+
+    nav { display: flex; align-items: center; gap: 24px; }
+    nav a {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-md);
+      transition: color 0.2s;
+    }
+    nav a:hover { color: var(--white); }
+
+    .btn-github {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 7px 16px;
+      border: 1px solid var(--red);
+      color: var(--red);
+      background: transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-github:hover { background: var(--red); color: #fff; }
+
+    /* Hamburger */
+    .hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 4px;
+    }
+    .hamburger span {
+      display: block;
+      width: 22px;
+      height: 2px;
+      background: var(--text-md);
+      transition: all 0.3s;
+    }
+
+    .mobile-nav {
+      display: none;
+      position: fixed;
+      top: 56px; left: 0; right: 0;
+      background: rgba(5,4,3,0.97);
+      border-bottom: 1px solid var(--border);
+      padding: 24px 32px;
+      z-index: 99;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .mobile-nav.open { display: flex; }
+    .mobile-nav a {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-md);
+    }
+
+    /* ── Wrappers ───────────────────────────────────────────── */
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+
+    section { padding: 100px 0; }
+
+    /* ── Hero ───────────────────────────────────────────────── */
+    #hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      overflow: hidden;
+      padding-top: 56px;
+    }
+
+    .hero-corner {
+      position: absolute;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--text);
+      text-transform: uppercase;
+      opacity: 0.5;
+    }
+    .hero-corner.tl { top: 80px; left: 32px; }
+    .hero-corner.tr { top: 80px; right: 32px; text-align: right; }
+    .hero-corner.bl { bottom: 40px; left: 32px; }
+    .hero-corner.br { bottom: 40px; right: 32px; text-align: right; }
+
+    /* SATAN2 missile SVG */
+    .missile-wrap {
+      position: absolute;
+      right: 6%;
+      top: 50%;
+      transform: translateY(-50%);
+      opacity: 0.06;
+      pointer-events: none;
+    }
+
+    /* Pentagram background */
+    .pentagram-bg {
+      position: absolute;
+      left: 4%;
+      top: 50%;
+      transform: translateY(-50%);
+      opacity: 0.04;
+      pointer-events: none;
+    }
+
+    .stamp {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border: 2px solid var(--soviet);
+      color: var(--soviet);
+      margin-bottom: 32px;
+    }
+    .stamp-wrap {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
+    .stamp-1 { transform: rotate(-6deg); }
+    .stamp-2 { transform: rotate(3deg); border-color: var(--nuclear); color: var(--nuclear); }
+
+    .hero-inner { position: relative; z-index: 2; }
+
+    .nuclear-badge {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: var(--red);
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    .nuclear-badge::before,
+    .nuclear-badge::after {
+      content: '☢';
+      font-size: 14px;
+    }
+
+    h1 {
+      font-size: clamp(52px, 10vw, 110px);
+      line-height: 0.95;
+      color: var(--white);
+      margin-bottom: 8px;
+      text-shadow: 0 0 60px rgba(196,26,14,0.3);
+    }
+    h1 .accent { color: var(--red); }
+
+    .hero-sub-title {
+      font-family: var(--mono);
+      font-size: clamp(9px, 1.5vw, 12px);
+      letter-spacing: 0.35em;
+      color: var(--text-md);
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    .hero-rule {
+      width: 48px;
+      height: 2px;
+      background: var(--red);
+      margin: 24px auto;
+    }
+
+    .hero-desc {
+      font-size: 16px;
+      color: var(--text-md);
+      max-width: 540px;
+      margin: 0 auto 32px;
+      line-height: 1.8;
+    }
+
+    .hero-badges {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 36px;
+    }
+    .hero-badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      padding: 4px 12px;
+      border: 1px solid var(--border-h);
+      color: var(--text-md);
+      text-transform: uppercase;
+    }
+
+    .hero-cta {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .btn-primary {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 14px 32px;
+      background: var(--red);
+      color: #fff;
+      border: 1px solid var(--red);
+      cursor: pointer;
+      transition: all 0.25s;
+      display: inline-block;
+    }
+    .btn-primary:hover { background: transparent; color: var(--red); }
+    .btn-ghost {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 14px 32px;
+      background: transparent;
+      color: var(--text-md);
+      border: 1px solid var(--border-h);
+      cursor: pointer;
+      transition: all 0.25s;
+      display: inline-block;
+    }
+    .btn-ghost:hover { color: var(--white); border-color: var(--text-md); }
+
+    /* Soviet cyrillic overlay */
+    .cyrillic {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.25em;
+      color: var(--soviet);
+      opacity: 0.6;
+      text-transform: uppercase;
+      margin-top: 20px;
+    }
+
+    /* ── Section titles ─────────────────────────────────────── */
+    .section-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--red);
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: clamp(28px, 4vw, 44px);
+      color: var(--white);
+      margin-bottom: 16px;
+      line-height: 1.1;
+    }
+    .section-desc {
+      font-size: 15px;
+      color: var(--text-md);
+      max-width: 560px;
+      line-height: 1.8;
+      margin-bottom: 56px;
+    }
+
+    hr.divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0;
+    }
+
+    /* ── Doctrine (Brief) ───────────────────────────────────── */
+    #doctrine {
+      padding: 100px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .doctrine-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 48px;
+      align-items: start;
+    }
+    .doctrine-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.3em;
+      color: var(--text);
+      text-transform: uppercase;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      padding-top: 4px;
+    }
+    .doctrine-content { }
+    .doctrine-quote {
+      font-family: var(--type);
+      font-size: clamp(18px, 2.5vw, 26px);
+      color: var(--white);
+      line-height: 1.5;
+      margin-bottom: 32px;
+    }
+    .doctrine-quote::before { content: '"'; color: var(--red); }
+    .doctrine-quote::after { content: '"'; color: var(--red); }
+    .doctrine-body {
+      font-size: 15px;
+      color: var(--text-md);
+      line-height: 1.9;
+      max-width: 680px;
+    }
+    .doctrine-pillars {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1px;
+      background: var(--border);
+      margin-top: 48px;
+    }
+    .pillar {
+      background: var(--bg);
+      padding: 28px 24px;
+      transition: background 0.2s;
+    }
+    .pillar:hover { background: var(--surface); }
+    .pillar-num {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--nuclear);
+      margin-bottom: 12px;
+      letter-spacing: 0.1em;
+    }
+    .pillar h4 {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--white);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .pillar p {
+      font-size: 13px;
+      color: var(--text-md);
+      line-height: 1.7;
+    }
+
+    /* ── Arsenal (Features) ─────────────────────────────────── */
+    #arsenal {
+      padding: 100px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .arsenal-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1px;
+      background: var(--border);
+    }
+    .exhibit {
+      background: var(--bg);
+      padding: 32px 28px;
+      border-left: 3px solid transparent;
+      transition: all 0.2s;
+    }
+    .exhibit:hover {
+      background: var(--surface);
+      border-left-color: var(--red);
+    }
+    .exhibit-num {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--nuclear);
+      margin-bottom: 16px;
+      letter-spacing: 0.1em;
+    }
+    .exhibit-tag {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+    .exhibit h3 {
+      font-size: 16px;
+      color: var(--white);
+      margin-bottom: 10px;
+      font-family: var(--type);
+    }
+    .exhibit p {
+      font-size: 13px;
+      color: var(--text-md);
+      line-height: 1.75;
+    }
+    .exhibit-status {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      margin-top: 16px;
+    }
+    .status-live { background: rgba(0,200,80,0.1); color: #00c853; border: 1px solid rgba(0,200,80,0.2); }
+    .status-planned { background: var(--nuclear-dim); color: var(--nuclear); border: 1px solid rgba(212,130,10,0.2); }
+
+    /* ── Deployment (Build) ─────────────────────────────────── */
+    #deployment {
+      padding: 100px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .deploy-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 12px 24px;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: all 0.2s;
+    }
+    .tab.active { color: var(--red); border-bottom-color: var(--red); }
+    .tab:hover { color: var(--text-bright); }
+
+    .terminal {
+      background: #020101;
+      border: 1px solid var(--border);
+      border-top: none;
+    }
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-r { background: #ff5f57; }
+    .dot-y { background: #febc2e; }
+    .dot-g { background: #28c840; }
+    .terminal-title {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      margin-left: 8px;
+      letter-spacing: 0.08em;
+    }
+    .terminal pre {
+      padding: 24px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.7;
+      overflow-x: auto;
+      color: #9a8a7a;
+    }
+    pre .cm { color: #5a5050; }  /* comment */
+    pre .cp { color: var(--red); }  /* prompt $ */
+    pre .cc { color: #c0a060; }  /* command */
+    pre .cf { color: #8abccc; }  /* flag */
+    pre .cs { color: #90c090; }  /* string/path */
+    pre .cv { color: #c0a0e0; }  /* value */
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Operations (Usage) ─────────────────────────────────── */
+    #ops {
+      padding: 100px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .ops-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1px;
+      background: var(--border);
+    }
+    .ops-card {
+      background: var(--bg);
+      padding: 28px;
+      transition: background 0.2s;
+    }
+    .ops-card:hover { background: var(--surface); }
+    .ops-platform {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--nuclear);
+      margin-bottom: 10px;
+    }
+    .ops-card h3 {
+      font-size: 15px;
+      color: var(--white);
+      margin-bottom: 12px;
+    }
+    .ops-card pre {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-md);
+      line-height: 1.65;
+      overflow-x: auto;
+    }
+
+    /* ── Intel / FAQ ────────────────────────────────────────── */
+    #intel {
+      padding: 100px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .faq-list { max-width: 760px; }
+    .faq-item {
+      border-bottom: 1px solid var(--border);
+    }
+    .faq-question {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 0;
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text-bright);
+      letter-spacing: 0.04em;
+      transition: color 0.2s;
+    }
+    .faq-question:hover { color: var(--white); }
+    .faq-icon {
+      font-size: 16px;
+      color: var(--red);
+      transition: transform 0.3s;
+      flex-shrink: 0;
+      margin-left: 16px;
+    }
+    .faq-item.open .faq-icon { transform: rotate(45deg); }
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s ease;
+    }
+    .faq-item.open .faq-answer { max-height: 500px; }
+    .faq-answer p {
+      padding-bottom: 20px;
+      font-size: 14px;
+      color: var(--text-md);
+      line-height: 1.8;
+    }
+
+    /* ── Strike / CTA ───────────────────────────────────────── */
+    #strike {
+      padding: 120px 0;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    #strike::before {
+      content: 'САТАНА';
+      position: absolute;
+      font-family: var(--type);
+      font-size: clamp(80px, 18vw, 200px);
+      color: var(--red);
+      opacity: 0.025;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      white-space: nowrap;
+      pointer-events: none;
+      letter-spacing: 0.1em;
+    }
+    .strike-inner { position: relative; z-index: 1; }
+    .strike-stamp {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      padding: 6px 20px;
+      border: 2px solid var(--red);
+      color: var(--red);
+      transform: rotate(-2deg);
+      margin-bottom: 32px;
+    }
+    #strike h2 {
+      font-size: clamp(32px, 6vw, 64px);
+      color: var(--white);
+      margin-bottom: 20px;
+    }
+    #strike p {
+      font-size: 16px;
+      color: var(--text-md);
+      max-width: 480px;
+      margin: 0 auto 40px;
+    }
+
+    /* ── Footer ─────────────────────────────────────────────── */
+    footer {
+      padding: 48px 0 32px;
+      border-top: 1px solid var(--border);
+      position: relative;
+      z-index: 1;
+    }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr 1fr;
+      gap: 48px;
+      margin-bottom: 48px;
+    }
+    .footer-brand-name {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--red);
+      letter-spacing: 0.15em;
+      margin-bottom: 12px;
+    }
+    .footer-brand-desc {
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.7;
+      max-width: 300px;
+    }
+    .footer-col-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+    .footer-col a {
+      display: block;
+      font-size: 13px;
+      color: var(--text-md);
+      margin-bottom: 10px;
+      transition: color 0.2s;
+    }
+    .footer-col a:hover { color: var(--white); }
+    .footer-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .footer-copy {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      letter-spacing: 0.08em;
+    }
+    .footer-case {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--text);
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      text-transform: uppercase;
+    }
+
+    /* ── Responsive ─────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      header { padding: 0 20px; }
+      nav { display: none; }
+      .hamburger { display: flex; }
+      .wrapper { padding: 0 20px; }
+      section { padding: 70px 0; }
+      .doctrine-grid { grid-template-columns: 1fr; }
+      .doctrine-label { writing-mode: horizontal-tb; transform: none; margin-bottom: 12px; }
+      .footer-grid { grid-template-columns: 1fr; gap: 32px; }
+      .hero-corner.tr, .hero-corner.br { display: none; }
+      .missile-wrap, .pentagram-bg { display: none; }
+      .footer-bottom { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Rain canvas -->
+<canvas id="rain"></canvas>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo">
+    ☢&nbsp;SATAN2 <span>/ v1.0</span>
+  </div>
+  <nav>
+    <a href="#doctrine">Doctrine</a>
+    <a href="#arsenal">Arsenal</a>
+    <a href="#deployment">Deploy</a>
+    <a href="#ops">Ops</a>
+    <a href="#intel">Intel</a>
+    <a href="https://github.com/franckferman/SATAN2" class="btn-github" target="_blank" rel="noopener">GitHub ↗</a>
+  </nav>
+  <button class="hamburger" onclick="toggleMenu()" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</header>
+
+<div class="mobile-nav" id="mobileNav">
+  <a href="#doctrine" onclick="toggleMenu()">Doctrine</a>
+  <a href="#arsenal" onclick="toggleMenu()">Arsenal</a>
+  <a href="#deployment" onclick="toggleMenu()">Deploy</a>
+  <a href="#ops" onclick="toggleMenu()">Ops</a>
+  <a href="#intel" onclick="toggleMenu()">Intel</a>
+  <a href="https://github.com/franckferman/SATAN2" target="_blank" rel="noopener">GitHub ↗</a>
+</div>
+
+<!-- ── Hero ── -->
+<section id="hero">
+  <!-- Corner decorations -->
+  <div class="hero-corner tl">
+    RS-28 SARMAT&nbsp;/&nbsp;SATAN-2<br>
+    CLASSIFIED // TOP SECRET
+  </div>
+  <div class="hero-corner tr">
+    CODEWORD: ANNIHILATOR<br>
+    AUTHORISED USE ONLY
+  </div>
+  <div class="hero-corner bl">Р-36М · ВОЕВОДА · С-2 · SATAN II</div>
+  <div class="hero-corner br">☢ COUNTER-FORENSICS · RED TEAM OPS</div>
+
+  <!-- SATAN2 missile silhouette (SVG) -->
+  <div class="missile-wrap">
+    <svg width="140" height="520" viewBox="0 0 140 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Nose cone -->
+      <path d="M70 10 L95 130 L45 130 Z" fill="#c41a0e" opacity="0.8"/>
+      <!-- Body upper -->
+      <rect x="42" y="130" width="56" height="200" fill="#8b1010"/>
+      <!-- Stage separation band -->
+      <rect x="38" y="326" width="64" height="10" fill="#c41a0e"/>
+      <!-- Body lower -->
+      <rect x="44" y="336" width="52" height="120" fill="#6b0a0a"/>
+      <!-- Engine bell -->
+      <path d="M36 456 L50 456 L50 500 L40 520 L36 520 Z" fill="#5a0808"/>
+      <path d="M104 456 L90 456 L90 500 L100 520 L104 520 Z" fill="#5a0808"/>
+      <rect x="50" y="456" width="40" height="8" fill="#8b1010"/>
+      <!-- Fins -->
+      <path d="M42 400 L10 480 L42 456 Z" fill="#6b0a0a"/>
+      <path d="M98 400 L130 480 L98 456 Z" fill="#6b0a0a"/>
+      <!-- Star emblem -->
+      <text x="70" y="240" text-anchor="middle" font-size="28" fill="#c41a0e" opacity="0.6">★</text>
+      <!-- Red stripe -->
+      <rect x="42" y="270" width="56" height="4" fill="#c41a0e" opacity="0.5"/>
+    </svg>
+  </div>
+
+  <!-- Pentagram silhouette -->
+  <div class="pentagram-bg">
+    <svg width="360" height="360" viewBox="0 0 360 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="180" cy="180" r="170" stroke="#c41a0e" stroke-width="1.5"/>
+      <circle cx="180" cy="180" r="155" stroke="#c41a0e" stroke-width="0.5"/>
+      <polygon points="180,20 330,280 40,100 320,100 30,280" stroke="#c41a0e" stroke-width="1.5" fill="none"/>
+    </svg>
+  </div>
+
+  <div class="hero-inner">
+    <div class="nuclear-badge">SECURE ANTI-FORENSICS AND TOTAL ANNIHILATION OF INFORMATION</div>
+
+    <div class="stamp-wrap">
+      <div class="stamp stamp-1">Top Secret</div>
+      <div class="stamp stamp-2">☢ Red Team Use Only</div>
+    </div>
+
+    <h1>SATAN<span class="accent">2</span></h1>
+    <div class="hero-sub-title">Р-36М · Counter-Forensics · Framework</div>
+    <div class="hero-rule"></div>
+
+    <p class="hero-desc">
+      Advanced counter-forensics framework. Multi-pass wiping. Nested encryption.
+      Filesystem implosion. Forensic artifact forgery. Embedded metadata poisoning.
+      Misdirection payloads.<br>
+      <em>Terminate all traces.</em>
+    </p>
+
+    <div class="hero-badges">
+      <span class="hero-badge">Rust</span>
+      <span class="hero-badge">Linux + Windows</span>
+      <span class="hero-badge">AGPLv3</span>
+      <span class="hero-badge">Red Team</span>
+      <span class="hero-badge">OPSEC</span>
+    </div>
+
+    <div class="hero-cta">
+      <a href="https://github.com/franckferman/SATAN2" class="btn-primary" target="_blank" rel="noopener">
+        Clone Repository
+      </a>
+      <a href="#arsenal" class="btn-ghost">View Arsenal</a>
+    </div>
+
+    <div class="cyrillic">УНИЧТОЖЬ ВСЕ СЛЕДЫ · TERMINATE ALL TRACES · 666</div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- ── Doctrine ── -->
+<section id="doctrine">
+  <div class="wrapper">
+    <div class="doctrine-grid">
+      <div class="doctrine-label">Classified</div>
+      <div class="doctrine-content">
+        <div class="section-label">// The Doctrine</div>
+        <blockquote class="doctrine-quote">
+          Pressing Delete leaves a body. SATAN2 buries it, burns the grave, poisons the soil, and plants false witnesses.
+        </blockquote>
+        <p class="doctrine-body">
+          SATAN2 does not slow forensic analysts — it makes their findings false.<br><br>
+          Classical wiping tools focus on data destruction. SATAN2 goes further: it combines hardware-level erasure, multi-layer nested encryption, OS artefact annihilation, and systematic deception — forging plausible activity trails that misdirect and exhaust incident-response analysis.
+        </p>
+
+        <div class="doctrine-pillars">
+          <div class="pillar">
+            <div class="pillar-num">01 // DESTROY</div>
+            <h4>Annihilate</h4>
+            <p>Hardware-level erasure: ATA Secure Erase, NVMe Format NVM, multi-pass overwrite, filesystem implosion, cluster tip & slack space wipe.</p>
+          </div>
+          <div class="pillar">
+            <div class="pillar-num">02 // ENCRYPT</div>
+            <h4>Seal</h4>
+            <p>Triple-layer nested encryption: AES-256, Twofish-256, Camellia-256, Kuznyechik-256 in XTS mode. Survivors yield nothing.</p>
+          </div>
+          <div class="pillar">
+            <div class="pillar-num">03 // ERASE</div>
+            <h4>Vanish</h4>
+            <p>Full OS artefact cleanup: logs, registry, journals, browser state, execution traces, NTFS journals, memory — across Linux and Windows.</p>
+          </div>
+          <div class="pillar">
+            <div class="pillar-num">04 // DECEIVE</div>
+            <h4>Misdirect</h4>
+            <p>Forge synthetic artefacts: fake Prefetch, ShimCache, BAM, LNK, event logs, login records — plus honey injection and compression traps.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Arsenal ── -->
+<section id="arsenal">
+  <div class="wrapper">
+    <div class="section-label">// Arsenal — Warhead Payload</div>
+    <h2 class="section-title">Counter-Forensics Capabilities</h2>
+    <p class="section-desc">Every module is independently usable. Combine freely based on your threat model.</p>
+
+    <div class="arsenal-grid">
+
+      <div class="exhibit">
+        <div class="exhibit-num">WARHEAD-01</div>
+        <div class="exhibit-tag">Destruction · Hardware</div>
+        <h3>Multi-Pass Shredding</h3>
+        <p>DoD 5220.22-M / Gutmann / Schneier patterns. 0xFF → 0x00 → random → truncate → unlink. ATA Secure Erase & NVMe Format NVM for firmware-level erasure.</p>
+        <span class="exhibit-status status-live">Live</span>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-num">WARHEAD-02</div>
+        <div class="exhibit-tag">Destruction · Filesystem</div>
+        <h3>Filesystem Implosion</h3>
+        <p>GPT primary+backup headers, MBR, ext4 primary+backup superblocks (sparse groups), XFS AG superblocks, Btrfs at 64K / 64M / 256G / 1P offsets. Slack space & cluster tip wipe.</p>
+        <span class="exhibit-status status-live">Live</span>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-num">WARHEAD-03</div>
+        <div class="exhibit-tag">Encryption · Multi-Layer</div>
+        <h3>Nested Triple Encryption</h3>
+        <p>AES-256-XTS → Twofish-256-XTS → Camellia-256-XTS → Kuznyechik-256. Independent keys per layer, PBKDF2-HMAC-SHA3-512 derivation. SATAN2CV container format.</p>
+        <span class="exhibit-status status-live">Live</span>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-num">WARHEAD-04</div>
+        <div class="exhibit-tag">Linux · Auth Logs</div>
+        <h3>Linux Artifact Annihilation</h3>
+        <p>auth.log, syslog, audit.log, kern.log, wtmp/utmp, lastlog, systemd journal, NetworkManager, GNOME Tracker, shell history, browser state (Chrome/FF/Brave), SSH keys, Docker.</p>
+        <span class="exhibit-status status-live">Live</span>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-num">WARHEAD-05</div>
+        <div class="exhibit-tag">Windows · Execution Traces</div>
+        <h3>Windows Forensic Wipe</h3>
+        <p>Prefetch, ShimCache, Amcache.hve, PCA, BAM/DAM, UserAssist, MUI Cache, BITS, $UsnJrnl, Event Logs, Windows Search (ESE + SQLite), SRUM, Timeline, JumpLists, RDP, PowerShell history.</p>
+        <span class="exhibit-status status-live">Live</span>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-num">WARHEAD-06</div>
+        <div class="exhibit-tag">Forgery · Windows</div>
+        <h3>Forensic Artifact Forgery</h3>
+        <p>Plant plausible fake trails: Prefetch v30 MAM (native Win10/11 format via ntdll!RtlCompressBuffer), ShimCache blobs, BAM entries, UserAssist, fake Event Logs, LNK files, MRU registry entries, browser history.</p>
+        <span class="exhibit-status status-live">Live</span>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-num">WARHEAD-07</div>
+        <div class="exhibit-tag">Forgery · Linux</div>
+        <h3>Linux Log Forgery</h3>
+        <p>Synthetic wtmp/utmp login records, lastlog per-UID entries, systemd journal injection via socket (undetectable even with FSS), auth.log / syslog forging, package install log fabrication.</p>
+        <span class="exhibit-status status-live">Live</span>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-num">WARHEAD-08</div>
+        <div class="exhibit-tag">Metadata · Timestamps</div>
+        <h3>MACE Timestamp Scrambling</h3>
+        <p>utimensat() with four strategies: random-plausible (2000–2024), random-full, epoch, clone-from-reference. File signature masking (magic bytes overwrite). Extended attribute removal.</p>
+        <span class="exhibit-status status-live">Live</span>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-num">WARHEAD-09</div>
+        <div class="exhibit-tag">Metadata · Embedded — Planned</div>
+        <h3>Embedded Metadata Poisoning</h3>
+        <p>EXIF GPS coordinates (fake location), fake camera model, author, timestamps for JPEG/PNG/TIFF. PDF Creator/Author/ModDate. Office dc:creator / lastModifiedBy. Pure-Rust, no exiftool dependency.</p>
+        <span class="exhibit-status status-planned">Planned</span>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-num">WARHEAD-10</div>
+        <div class="exhibit-tag">Misdirection · Traps — Planned</div>
+        <h3>Compression Traps & Archive Bombs</h3>
+        <p>ZIP bombs (42 KB → 4.5 PB), recursive ZIP nesting, malformed RAR/7z headers, ZIP quines. Seeded as decoys. Designed to crash or hang binwalk, Autopsy, and forensic carving pipelines.</p>
+        <span class="exhibit-status status-planned">Planned</span>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-num">WARHEAD-11</div>
+        <div class="exhibit-tag">Misdirection · Honey — Planned</div>
+        <h3>Steganography Honey Injection</h3>
+        <p>Plant fake "hidden messages" in JPEG/PNG LSB planes, PDF white-on-white layers, Office XML comments, WAV ID3 tags. Analyst finds "stego content" → decodes → discovers operationally empty garbage. Hours wasted.</p>
+        <span class="exhibit-status status-planned">Planned</span>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-num">WARHEAD-12</div>
+        <div class="exhibit-tag">Audit · OPSEC</div>
+        <h3>Post-Cleanup Self-Audit</h3>
+        <p>Enumerate residual forensic artefacts after cleanup: severity scoring (HIGH / MED / LOW), per-category findings across auth logs, browser state, SSH keys, GNOME Tracker, swap, journal, wtmp.</p>
+        <span class="exhibit-status status-live">Live</span>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── Deployment ── -->
+<section id="deployment">
+  <div class="wrapper">
+    <div class="section-label">// Launch Sequence</div>
+    <h2 class="section-title">Build &amp; Deploy</h2>
+    <p class="section-desc">Pure Rust. No runtime. Cross-compile for Windows from Linux.</p>
+
+    <div class="deploy-tabs">
+      <button class="tab active" onclick="switchTab(this,'tab-linux')">Linux</button>
+      <button class="tab" onclick="switchTab(this,'tab-windows')">Windows (cross)</button>
+      <button class="tab" onclick="switchTab(this,'tab-check')">Check</button>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+        <span class="terminal-title">satan2 — terminal</span>
+      </div>
+
+      <div class="tab-panel active" id="tab-linux">
+        <pre><span class="cm"># Prerequisites</span>
+<span class="cp">$</span> <span class="cc">rustup</span> <span class="cf">update</span> <span class="cs">stable</span>
+
+<span class="cm"># Build Linux binary</span>
+<span class="cp">$</span> <span class="cc">cargo</span> <span class="cf">build</span> <span class="cs">--release -p satan2-cli</span>
+
+<span class="cm"># Binary lands at:</span>
+<span class="cp">$</span> <span class="cc">./target/release/satan2</span> <span class="cs">--help</span></pre>
+      </div>
+
+      <div class="tab-panel" id="tab-windows">
+        <pre><span class="cm"># Install cross-compile toolchain</span>
+<span class="cp">$</span> <span class="cc">rustup</span> <span class="cf">target add</span> <span class="cs">x86_64-pc-windows-gnu</span>
+<span class="cp">$</span> <span class="cc">sudo apt install</span> <span class="cs">gcc-mingw-w64-x86-64</span>
+
+<span class="cm"># Build Windows binary from Linux</span>
+<span class="cp">$</span> <span class="cc">cargo</span> <span class="cf">build</span> <span class="cs">--release -p satan2-win \</span>
+    <span class="cs">--target x86_64-pc-windows-gnu</span>
+
+<span class="cm"># Binary lands at:</span>
+<span class="cp">$</span> <span class="cs">./target/x86_64-pc-windows-gnu/release/satan2_win.exe</span></pre>
+      </div>
+
+      <div class="tab-panel" id="tab-check">
+        <pre><span class="cm"># Full workspace type-check (fast, all platforms)</span>
+<span class="cp">$</span> <span class="cc">cargo</span> <span class="cf">check</span> <span class="cs">--workspace</span>
+
+<span class="cm"># Build all crates</span>
+<span class="cp">$</span> <span class="cc">cargo</span> <span class="cf">build</span> <span class="cs">--workspace</span>
+
+<span class="cm"># Expected output: zero errors, zero warnings</span>
+<span class="cv">Finished `dev` profile target(s) in 10s</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Ops ── -->
+<section id="ops">
+  <div class="wrapper">
+    <div class="section-label">// Field Operations</div>
+    <h2 class="section-title">Usage</h2>
+    <p class="section-desc">Select the right warhead for your operation. Combine freely.</p>
+
+    <div class="ops-grid">
+      <div class="ops-card">
+        <div class="ops-platform">Linux — Wipe</div>
+        <h3>Full Cleanup Sequence</h3>
+        <pre>satan2 wipe-logs
+satan2 wipe-journal
+satan2 wipe-browser
+satan2 wipe-wtmp
+satan2 wipe-shell-history
+satan2 wipe-ssh
+satan2 audit</pre>
+      </div>
+
+      <div class="ops-card">
+        <div class="ops-platform">Linux — Forge</div>
+        <h3>Plant Fake Login Trail</h3>
+        <pre>satan2 forge-wtmp \
+  --ts-start 1745107200 \
+  --ts-end 1748736000
+satan2 forge-journal \
+  --ts-start 1745107200 \
+  --ts-end 1748736000</pre>
+      </div>
+
+      <div class="ops-card">
+        <div class="ops-platform">Linux — Metadata</div>
+        <h3>Timestamp Scrambling</h3>
+        <pre>satan2 timestomp /opt/tools \
+  --strategy random-plausible
+
+satan2 mask-signature ./binary
+satan2 strip-xattr /data/sensitive/</pre>
+      </div>
+
+      <div class="ops-card">
+        <div class="ops-platform">Linux — Destroy</div>
+        <h3>Hardware Erasure</h3>
+        <pre>satan2 ata-erase /dev/sda
+satan2 nvme-erase /dev/nvme0
+satan2 wipe-swap
+satan2 fs-kill /dev/sdb</pre>
+      </div>
+
+      <div class="ops-card">
+        <div class="ops-platform">Windows — Wipe All</div>
+        <h3>One-Shot Full Cleanup</h3>
+        <pre>.\satan2_win.exe destroy-all \
+  --verbose</pre>
+      </div>
+
+      <div class="ops-card">
+        <div class="ops-platform">Windows — Forge</div>
+        <h3>Plant Fake Activity Trail</h3>
+        <pre>.\satan2_win.exe forge-all \
+  --ts-start 1745107200 \
+  --ts-end 1748736000</pre>
+      </div>
+
+      <div class="ops-card">
+        <div class="ops-platform">Windows — Targeted</div>
+        <h3>Execution Trace Forgery</h3>
+        <pre>.\satan2_win.exe forge-prefetch \
+  --n 15 --ts-base 1748736000
+.\satan2_win.exe forge-shimcache \
+  --n 20 --ts-base 1748736000
+.\satan2_win.exe forge-bam \
+  --n 10 --ts-start 1745107200 \
+  --ts-end 1748736000</pre>
+      </div>
+
+      <div class="ops-card">
+        <div class="ops-platform">Linux — Encrypt</div>
+        <h3>Triple-Layer Encryption</h3>
+        <pre>satan2 encrypt-layers \
+  /path/to/sensitive.tar
+<span style="color:#5a4f45"># → sensitive.tar.s2cv
+# Layer 1: AES-256-XTS
+# Layer 2: Twofish-256-XTS
+# Layer 3: Camellia-256-XTS</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Intel / FAQ ── -->
+<section id="intel">
+  <div class="wrapper">
+    <div class="section-label">// Intel Briefing</div>
+    <h2 class="section-title">Frequently Asked</h2>
+
+    <div class="faq-list">
+
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          What privileges are required on Windows?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-answer">
+          <p>Most operations require <code>NT AUTHORITY\SYSTEM</code> or a high-integrity Administrator token. Registry and Event Log operations need at minimum local Administrator. Run from an elevated prompt or via token impersonation within an existing privileged session.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          Does forge-prefetch produce files accepted by the live Windows OS?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-answer">
+          <p>Yes. The <code>forge-prefetch</code> module produces v30 MAM-compressed files using <code>ntdll!RtlCompressBuffer</code> with XPRESS Huffman algorithm — the native format used by Windows 10/11 Sysmain. The Hsieh SuperFastHash is computed correctly over the full device path. Files are accepted and parsed by both the live OS and forensic tools (PECmd, Autopsy).</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          Is journal injection detectable even with FSS enabled?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-answer">
+          <p>No — injection via <code>/run/systemd/journal/socket</code> is an architectural limitation of journald. FSS (Forward Secure Sealing) protects existing journal entries from retroactive modification, but injected entries appear as legitimate journal writes. Even with FSS active, a journal containing injected entries cannot be distinguished from a clean journal.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          What does wipe-usn leave behind?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-answer">
+          <p>EventID 3079 is written by the NTFS driver to the Application event log when the USN journal is deleted. Sysmon will log EID 1 on the <code>fsutil.exe</code> process creation if Sysmon is running. The <code>wipe-evtlog</code> command removes these traces. Run in order: <code>wipe-usn</code> → <code>wipe-evtlog</code>.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          How does the steganography honey injection misdirect analysts?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-answer">
+          <p>Stego-detection tools (StegDetect, zsteg, stegseek) flag files with anomalous LSB planes or embedded payload signatures. SATAN2's honey injector plants content that <em>looks</em> like intentional covert channels — fake encrypted blobs, Base64-looking data, XOR'd patterns — but decodes to operationally empty garbage. The analyst confirms "steganographic activity detected", spends hours decoding, and finds nothing exploitable.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          Can ATA Secure Erase be used on a live system drive?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-answer">
+          <p>No — the drive must be the target (not the boot device). Most BIOS/UEFI will set drives to a "frozen" security state at boot, which prevents ATA Secure Erase from being issued. SATAN2 detects the frozen state and reports it. Common workaround: hot-unplug and re-plug the drive (not viable on servers), or use NVME Format NVM which has fewer restrictions.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── Strike / CTA ── -->
+<section id="strike">
+  <div class="strike-inner">
+    <div class="strike-stamp">☢ Initiate Sequence</div>
+    <h2 class="section-title">Terminate All Traces</h2>
+    <p>Authorised use only. For Red Team engagements, security research, and privacy protection.</p>
+    <div class="hero-cta">
+      <a href="https://github.com/franckferman/SATAN2" class="btn-primary" target="_blank" rel="noopener">
+        GitHub Repository
+      </a>
+      <a href="https://github.com/franckferman/SATAN2/blob/stable/README.md" class="btn-ghost" target="_blank" rel="noopener">
+        Documentation
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="wrapper">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand-name">☢ SATAN2</div>
+        <p class="footer-brand-desc">
+          Secure Anti-Forensics and Total Annihilation of iNformation.<br>
+          Counter-forensics framework for authorised Red Team operations.
+        </p>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-title">Project</div>
+        <a href="https://github.com/franckferman/SATAN2" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/franckferman/SATAN2/blob/stable/README.md" target="_blank" rel="noopener">Documentation</a>
+        <a href="https://github.com/franckferman/SATAN2/blob/stable/LICENSE" target="_blank" rel="noopener">License (AGPLv3)</a>
+        <a href="https://github.com/franckferman/SATAN2/issues" target="_blank" rel="noopener">Issues</a>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-title">Contact</div>
+        <a href="mailto:contact@franckferman.fr">ProtonMail</a>
+        <a href="https://www.linkedin.com/in/franckferman" target="_blank" rel="noopener">LinkedIn</a>
+        <a href="https://www.twitter.com/franckferman" target="_blank" rel="noopener">Twitter / X</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="footer-copy">© Franck FERMAN — GNU AGPLv3 — Authorised use only</div>
+      <div class="footer-case">CASE #SATAN2-1.0 // ACTIVE</div>
+    </div>
+  </div>
+</footer>
+
+<!-- ── Scripts ── -->
+<script>
+  // Mobile menu
+  function toggleMenu() {
+    document.getElementById('mobileNav').classList.toggle('open');
+  }
+
+  // Tab switching
+  function switchTab(btn, panelId) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(panelId).classList.add('active');
+  }
+
+  // FAQ accordion
+  function toggleFaq(el) {
+    const item = el.closest('.faq-item');
+    const wasOpen = item.classList.contains('open');
+    document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+    if (!wasOpen) item.classList.add('open');
+  }
+
+  // Smooth scroll
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      const target = document.querySelector(a.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+  });
+
+  // Matrix rain — red Cyrillic + Latin characters
+  (function() {
+    const canvas = document.getElementById('rain');
+    const ctx = canvas.getContext('2d');
+    const CHARS = 'SATAN2☢★САТАНА0123456789ABCDEF∞⊗∅∇УНИЧТОЖЬ666';
+    let cols, drops;
+
+    function resize() {
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+      cols  = Math.floor(canvas.width / 16);
+      drops = Array(cols).fill(1);
+    }
+
+    function draw() {
+      ctx.fillStyle = 'rgba(5,4,3,0.06)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#c41a0e';
+      ctx.font = '13px JetBrains Mono, monospace';
+      for (let i = 0; i < drops.length; i++) {
+        const ch = CHARS[Math.floor(Math.random() * CHARS.length)];
+        ctx.fillText(ch, i * 16, drops[i] * 16);
+        if (drops[i] * 16 > canvas.height && Math.random() > 0.975) drops[i] = 0;
+        drops[i]++;
+      }
+    }
+
+    resize();
+    window.addEventListener('resize', resize);
+    setInterval(draw, 50);
+  })();
+</script>
+
+</body>
+</html>

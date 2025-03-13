@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "crates/satan2-core",
+    "crates/satan2-win",
+    "crates/satan2-cli",
+    "crates/satan2-crypto",
+]
+resolver = "2"
+
+[profile.release]
+opt-level     = "z"
+lto           = true
+codegen-units = 1
+strip         = true
+panic         = "abort"

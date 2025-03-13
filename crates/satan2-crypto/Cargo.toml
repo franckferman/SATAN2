@@ -1,0 +1,20 @@
+[package]
+name    = "satan2-crypto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+aes      = { version = "0.8",   features = ["zeroize"] }
+twofish  = "=0.7.1"   # cipher v0.4 API — 0.8 migrated to cipher v0.5
+camellia = "=0.1.0"   # cipher v0.4 API — 0.2 migrated to cipher v0.5
+sha2     = "0.10"
+sha3     = "0.10"
+hmac     = "0.12"
+pbkdf2   = { version = "0.12", features = ["hmac"] }
+blake2   = "0.10"
+cipher   = "0.4"
+getrandom = "0.2"
+zeroize  = { version = "1", features = ["zeroize_derive"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

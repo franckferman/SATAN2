@@ -1,0 +1,38 @@
+# Auto-detect text files and normalize line endings
+* text=auto eol=lf
+
+# Rust source
+*.rs    text eol=lf
+*.toml  text eol=lf
+
+# Web / docs
+*.html  text eol=lf
+*.css   text eol=lf
+*.js    text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+
+# Windows scripts (keep CRLF)
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Binaries — no diff, no merge
+*.exe   binary
+*.dll   binary
+*.so    binary
+*.dylib binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.zip   binary
+*.tar   binary
+*.gz    binary
+
+# GitHub Linguist overrides
+docs/website/*.html linguist-documentation=false linguist-language=HTML

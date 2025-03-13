@@ -1,0 +1,16 @@
+[package]
+name    = "satan2-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "satan2"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+satan2-core   = { path = "../satan2-core" }
+satan2-crypto = { path = "../satan2-crypto" }
+libc          = "0.2"

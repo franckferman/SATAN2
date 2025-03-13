@@ -1,0 +1,15 @@
+[package]
+name    = "satan2-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "satan2_core"
+
+[dependencies]
+libc     = "0.2"
+walkdir  = "2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+glob     = "0.3"
+rusqlite = "0.31"

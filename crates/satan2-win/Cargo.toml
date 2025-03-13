@@ -1,0 +1,33 @@
+[package]
+name    = "satan2-win"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "satan2_win"
+path = "src/main.rs"
+
+[dependencies]
+glob          = "0.3"
+walkdir       = "2"
+satan2-crypto = { path = "../satan2-crypto" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+[target.'cfg(target_os = "windows")'.dependencies.windows-sys]
+version  = "0.59"
+features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_System_Wmi",
+    "Win32_System_Threading",
+    "Win32_System_Services",
+    "Win32_System_Registry",
+    "Win32_System_EventLog",
+    "Win32_System_LibraryLoader",
+    "Win32_Security",
+    "Win32_UI_Shell",
+]
