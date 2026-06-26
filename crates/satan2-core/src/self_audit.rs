@@ -210,11 +210,14 @@ pub fn audit_artifacts(verbose: bool) -> Vec<AuditFinding> {
         check_file_nonempty(&mut f, path, "syslog", "System log has content", 2);
     }
 
-    // ── wtmp / utmp ───────────────────────────────────────────────────────────
+    // ── wtmp / utmp / login records ──────────────────────────────────────────
     check_wtmp_has_records(&mut f);
     check_file_nonempty(&mut f, "/var/log/lastlog", "wtmp",
         "lastlog records last login per user", 2);
-    // Debian 13+ wtmpdb (SQLite, replaces binary wtmp)
+    check_file_nonempty(&mut f, "/var/log/btmp", "wtmp",
+        "btmp records failed login attempts (readable via `lastb`)", 2);
+    check_file_nonempty(&mut f, "/var/log/faillog", "wtmp",
+        "faillog PAM per-UID failure counters", 1);
     check_file_nonempty(&mut f, "/var/lib/wtmpdb/wtmpdb.db", "wtmp",
         "wtmpdb SQLite login DB (Debian 13+)", 2);
 
@@ -270,9 +273,34 @@ pub fn audit_artifacts(verbose: bool) -> Vec<AuditFinding> {
     check_dir_nonempty(&mut f, "/var/log/journal", "journal",
         "Persistent systemd journal present", 2);
 
-    // ── Kernel log ────────────────────────────────────────────────────────────
+    // ── Kernel / daemon logs ──────────────────────────────────────────────────
     check_file_nonempty(&mut f, "/var/log/kern.log", "kernel",
         "kern.log has content (USB events, module loads, network events)", 2);
+    check_file_nonempty(&mut f, "/var/log/dmesg", "kernel",
+        "dmesg snapshot present", 1);
+    check_file_nonempty(&mut f, "/var/log/daemon.log", "syslog",
+        "daemon.log records background service events", 1);
+
+    // ── Web server logs ───────────────────────────────────────────────────────
+    for path in &[
+        "/var/log/apache2/access.log",
+        "/var/log/apache2/error.log",
+        "/var/log/httpd/access_log",
+        "/var/log/httpd/error_log",
+        "/var/log/nginx/access.log",
+        "/var/log/nginx/error.log",
+    ] {
+        check_file_nonempty(&mut f, path, "web-logs",
+            "Web server log has content (HTTP requests, client IPs)", 2);
+    }
+
+    // ── Service logs (FTP / DB) ───────────────────────────────────────────────
+    for path in &["/var/log/xferlog", "/var/log/vsftpd.log", "/var/log/pureftp.log"] {
+        check_file_nonempty(&mut f, path, "ftp-logs", "FTP transfer log present", 2);
+    }
+    for path in &["/var/log/mysql.log", "/var/log/mysqld.log", "/var/log/mysql/error.log"] {
+        check_file_nonempty(&mut f, path, "db-logs", "MySQL/MariaDB log present", 1);
+    }
 
     // ── NetworkManager connection profiles ────────────────────────────────────
     check_dir_nonempty(&mut f, "/etc/NetworkManager/system-connections", "network",
