@@ -1,0 +1,178 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build — ${{ matrix.label }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Linux x86-64 (glibc) ───────────────────────────
+          - label:   linux-x86_64
+            target:  x86_64-unknown-linux-gnu
+            crate:   satan2-cli
+            binary:  satan2
+            archive: satan2-linux-x86_64.tar.gz
+            cross:   false
+
+          # ── Linux x86-64 (musl — fully static) ────────────
+          - label:   linux-x86_64-musl
+            target:  x86_64-unknown-linux-musl
+            crate:   satan2-cli
+            binary:  satan2
+            archive: satan2-linux-x86_64-musl.tar.gz
+            cross:   false
+
+          # ── Linux ARM64 ────────────────────────────────────
+          - label:   linux-arm64
+            target:  aarch64-unknown-linux-gnu
+            crate:   satan2-cli
+            binary:  satan2
+            archive: satan2-linux-arm64.tar.gz
+            cross:   true
+
+          # ── Windows x86-64 ─────────────────────────────────
+          - label:   windows-x86_64
+            target:  x86_64-pc-windows-gnu
+            crate:   satan2-win
+            binary:  satan2_win.exe
+            archive: satan2-windows-x86_64.zip
+            cross:   false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # ── Native cross-compile toolchains ─────────────────────
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get install -y musl-tools
+
+      - name: Install MinGW (Windows cross)
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        run: sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Install ARM64 cross toolchain
+        if: matrix.cross == true
+        run: sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      # ── Build ────────────────────────────────────────────────
+      - name: Build ${{ matrix.label }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          RUSTFLAGS: "-C strip=symbols -C opt-level=3 -C codegen-units=1"
+        run: |
+          cargo build --release \
+            -p ${{ matrix.crate }} \
+            --target ${{ matrix.target }}
+
+      # ── Package ──────────────────────────────────────────────
+      - name: Package (tar.gz — Linux)
+        if: "!endsWith(matrix.archive, '.zip')"
+        run: |
+          BIN="target/${{ matrix.target }}/release/${{ matrix.binary }}"
+          mkdir -p dist
+          cp "$BIN" dist/
+          cp README.md LICENSE dist/
+          tar -czf "${{ matrix.archive }}" -C dist .
+
+      - name: Package (zip — Windows)
+        if: endsWith(matrix.archive, '.zip')
+        run: |
+          BIN="target/${{ matrix.target }}/release/${{ matrix.binary }}"
+          mkdir -p dist
+          cp "$BIN" dist/
+          cp README.md LICENSE dist/
+          cd dist && zip -r "../${{ matrix.archive }}" .
+
+      # ── Checksum ─────────────────────────────────────────────
+      - name: SHA256
+        run: sha256sum ${{ matrix.archive }} > ${{ matrix.archive }}.sha256
+
+      # ── Upload artifact ──────────────────────────────────────
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: |
+            ${{ matrix.archive }}
+            ${{ matrix.archive }}.sha256
+          retention-days: 1
+
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh artifacts/
+
+      - name: Extract changelog excerpt
+        id: changelog
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+
+          gh release create "$TAG" artifacts/* \
+            --title "SATAN2 ${TAG}" \
+            --notes "$(cat <<'EOF'
+          ## ☢️ SATAN2 ${TAG}
+
+          ### Downloads
+
+          | Platform | Binary | Type |
+          |----------|--------|------|
+          | Linux x86-64 | \`satan2-linux-x86_64.tar.gz\` | glibc |
+          | Linux x86-64 | \`satan2-linux-x86_64-musl.tar.gz\` | static (musl) |
+          | Linux ARM64 | \`satan2-linux-arm64.tar.gz\` | glibc |
+          | Windows x86-64 | \`satan2-windows-x86_64.zip\` | MinGW |
+
+          Verify integrity with the accompanying `.sha256` files.
+
+          ### Usage
+
+          \`\`\`bash
+          # Linux
+          tar -xzf satan2-linux-x86_64-musl.tar.gz
+          chmod +x satan2 && ./satan2 --help
+
+          # Windows (elevated prompt)
+          Expand-Archive satan2-windows-x86_64.zip
+          .\satan2_win.exe --help
+          \`\`\`
+
+          > Authorised use only — Red Team engagements and security research.
+          EOF
+          )" \
+            --verify-tag
