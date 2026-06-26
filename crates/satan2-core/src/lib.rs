@@ -1,3 +1,6 @@
+pub mod exif_forge;
+pub mod trap_archive;
+pub mod stego_honey;
 pub mod nvme;
 pub mod ata;
 pub mod wipe;
