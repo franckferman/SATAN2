@@ -254,84 +254,66 @@ No Python, no shell scripts, no external runtime dependencies beyond OS-provided
 
 ---
 
-## Planned Features
+## Implemented: Deception Modules
 
-### Embedded File Metadata Poisoning
+### Embedded File Metadata Poisoning — `exif_forge.rs`
 
 > Forensic tools extract metadata embedded *inside* files — independent of filesystem timestamps, MFT records, or registry state. A carved JPEG recovered from unallocated space still carries its EXIF data.
 
-Planned module: `exif_forge.rs` — pure-Rust EXIF/XMP/ZIP-XML rewriter, no `exiftool` dependency.
+Pure-Rust implementation — no `exiftool` dependency.
 
-| File Type | Poisonable Fields |
-|-----------|-------------------|
-| **JPEG / PNG / TIFF / HEIC** | `DateTimeOriginal`, `DateTimeDigitized`, `Make`, `Model`, `Artist`, `Copyright`, `Software`, `GPSLatitude`, `GPSLongitude`, `GPSAltitude`, `GPSImgDirection` |
-| **PDF** | `Author`, `Creator`, `Producer`, `Subject`, `Keywords`, `CreationDate`, `ModDate` |
-| **Office (DOCX / XLSX / PPTX)** | `dc:creator`, `cp:lastModifiedBy`, `dcterms:created`, `dcterms:modified`, `cp:revision`, `cp:company` |
-| **MP4 / MOV** | `©nam`, `©ART`, `©day`, GPS atoms, encoder tag |
-| **RAW (CR2, NEF, ARW)** | Camera serial number, GPS, shutter count, firmware version |
-
-Modes:
-- **Wipe** — strip all embedded metadata
-- **Randomise** — replace with generated plausible values (random location, common camera model, realistic date range)
-- **Spoof** — inject operator-specified values (custom GPS coordinates, author name, creation date)
+| File Type | Implemented |
+|-----------|-------------|
+| **JPEG** | Full TIFF-LE EXIF segment: IFD0 + ExifIFD + GPS IFD. Fields: Make, Model, Software, Artist, DateTime, DateTimeOriginal, ISO, ExposureTime, FNumber, FocalLength, PixelXDimension, PixelYDimension, GPSLatitude, GPSLongitude, GPSMapDatum |
+| **PDF** | `/Info` dictionary injected before `%%EOF`: Author, Creator, Producer, CreationDate, ModDate |
+| **MP4 / MOV** | `mvhd` creation/modification timestamps (v0 + v1), `©too` encoder atom via `udta` |
 
 ---
 
-### Compression Traps & Archive Bombs
+### Compression Traps & Archive Bombs — `trap_archive.rs`
 
-> Decoy archives designed to crash, hang, or exhaust forensic parsing tools, and to waste analyst time.
+> Decoy archives designed to crash, hang, or exhaust forensic parsing tools.
 
-Planned module: `trap_archive.rs`
-
-| Trap Type | Mechanism | Effect on forensic tools |
-|-----------|-----------|--------------------------|
-| **ZIP bomb** (42 KB → 4.5 PB) | Nested DEFLATE recursion (quine structure) or flat 4 GB zero-filled file compressed to ~42 KB | `binwalk`, `sleuthkit`, `autopsy` carvers hang / OOM trying to expand |
-| **Recursive ZIP** | ZIP containing ZIP containing ZIP... up to 1000 levels deep | Recursive extractors stack-overflow |
-| **Malformed RAR / 7z / TAR** | Valid magic bytes + structurally invalid headers at random offsets | Parser throws unhandled exception; error logged but analysis halted |
-| **ZIP quine** | Self-referential archive that expands to itself | Extraction loops indefinitely |
-| **Oversized offset bomb** | ZIP central directory claims data at offset 0xFFFFFFFF | Parser seeks to invalid address; segfault on some tools |
-| **Corrupt-but-plausible** | Valid ZIP header, correct CRC for first N files, corrupted data for the rest | Analyst opens archive, sees legit-looking file list, can't extract evidence |
-
-These archives are seeded across the filesystem as decoys. The goal is not to harm analyst systems but to consume forensic pipeline time and resources on content that yields nothing.
+| Trap Type | Mechanism | Effect |
+|-----------|-----------|--------|
+| **Nested ZIP bomb** | N layers × W inner ZIPs, innermost = DEFLATE-compressed zeros; claims `W^N × leaf_size` bytes | `binwalk`, `autopsy` carvers OOM on extraction |
+| **Oversized ZIP** | CDR declares multi-GB uncompressed sizes; actual data = a few bytes | Naive parsers allocate and OOM before reading content |
+| **Bad CRC** | Valid structure, wrong CRC32 in CDR | Strict extractors reject; loose ones silently corrupt evidence |
+| **Truncated data** | Local file data shorter than stated compressed size | Partial-read crash in streaming extractors |
+| **Corrupt signature** | PK local header signature overwritten | Parser bails at first entry, may not scan CDR |
+| **Infinite recurse** | EOCD CDR offset points to EOCD itself | Self-referential parse loop |
 
 ---
 
-### Steganography Honey Injection
+### Steganography Honey Injection — `stego_honey.rs`
 
-> Plant fake "hidden messages" inside media and document files. An analyst who finds steganographic content spends hours decoding it — only to discover it carries no operational value.
+> Plant fake hidden messages inside media files. An analyst who finds steganographic content spends hours decoding content that carries no operational value.
 
-Planned module: `stego_honey.rs`
+| Carrier | Method | Fake payload |
+|---------|--------|--------------|
+| **JPEG** | Append after EOI (`FF D9`) with fake `OUTGUESS13` magic header | Seeded fake PEM private key block |
+| **PNG** | Inject `tEXt` chunk (keyword `steganography`) + `zTXt` chunk with fake zlib header | Base64-encoded noise |
+| **WAV** | LSB of 16-bit PCM audio samples; encodes payload length + payload bits | Fake PEM block seeded per file |
+| **Any format** | Raw trailer append with caller-specified tool signature | Arbitrary payload |
 
-**Principle:** The goal is misdirection, not real covert communication. Inject data that *looks* like intentional steganographic exfiltration into a large number of ordinary-looking files.
+`generate_honey_payload(seed, size)` — generates PEM-header-framed base64 noise that looks like credential material to automated scanners.
 
-| Carrier | Injection method | Injected "secret" |
-|---------|-----------------|-------------------|
-| **JPEG** | LSB plane of Y channel (classic F5/JSteg position) | Random BASE64-looking blob that decodes to garbage |
-| **PNG** | LSB of RGB channels | Lorem ipsum encoded as XOR'd bytes with a null key |
-| **BMP** | LSB rows | Repeating 16-byte pattern with no entropy |
-| **WAV / MP3** | ID3 tags + LSB of audio samples | Fake "encrypted" payload (just PRNG output) |
-| **PDF** | Hidden white-on-white text layers, stream comments | Fake coordinates, fake chat logs |
-| **DOCX** | Hidden revision track changes, XML comments | Plausible-looking internal memos |
-| **ZIP / Office** | Extra field bytes in local file headers | Hex-encoded "key material" that is actually /dev/urandom |
-
-**Analyst experience:** Forensic tools flag dozens of files with "steganographic content detected". Each file appears to contain encoded data. Decoding produces content that looks meaningful but is operationally empty. Hours of analyst time are consumed on a dead end.
-
-**Scale option:** `--inject-all /path/to/dir` — traverse a directory and inject honey into every qualifying file.
+`inject_directory_honey(dir, seed, size)` — traverse directory and inject into all JPEG/PNG/WAV files found.
 
 ---
 
-### Other Planned Techniques
+## Planned Techniques
 
 | Technique | Notes |
 |-----------|-------|
-| Partition scheme obfuscation | Ghost partitions, misleading GPT signatures — distinct from `fs_kill.rs` which *destroys* the table; this *falsifies* it |
+| Partition scheme obfuscation | Ghost partitions, misleading GPT signatures |
 | Misaligned sector wiping | Sub-512-byte granularity writes to evade hardware-level imagers |
-| Volume Shadow Copy poisoning | Create structurally valid but content-corrupted VSS snapshots; current impl only deletes |
-| Restricted & Unicode filename injection | RTLO characters, MAX_PATH bypass, null-byte names to crash forensic parsers |
-| Cross-linked file fragments | Intentional inode cross-links to prevent fragment reassembly during carving |
-| Bad sector simulation | Mark LBA ranges as reallocated to block carving of targeted areas |
+| Volume Shadow Copy poisoning | Structurally valid but content-corrupted VSS snapshots |
+| Unicode filename injection | RTLO characters, MAX_PATH bypass to crash forensic parsers |
+| Cross-linked file fragments | Inode cross-links to prevent fragment reassembly during carving |
+| Bad sector simulation | Mark LBA ranges as reallocated to block carving |
 | Disk surface noise generation | PRNG fill of free blocks to defeat entropy-based carving |
-| MSIX Virtual Registry Hive cleanup | `%LocalAppData%\Packages\*\SystemAppData\Helium\` — MSIX app MRU lists invisible in NTUSER.DAT |
+| MSIX Virtual Registry Hive cleanup | `%LocalAppData%\Packages\*\SystemAppData\Helium\` |
 
 ---
 
