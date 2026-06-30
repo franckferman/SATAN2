@@ -1,4 +1,4 @@
-name: Deploy SATAN2 site to GitHub Pages
+name: Deploy static content to Pages
 
 on:
   push:
@@ -15,16 +15,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Validate HTML
-        run: |
-          sudo apt-get install -y tidy || true
-          tidy -errors -quiet -utf8 docs/website/index.html || true
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -34,13 +32,6 @@ jobs:
         with:
           path: 'docs/website'
 
-  deploy:
-    needs: build
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
