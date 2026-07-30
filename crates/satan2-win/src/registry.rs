@@ -1,4 +1,3 @@
-#![cfg(target_os = "windows")]
 /*
  * registry.rs — Registry artifact removal
  *
@@ -15,12 +14,9 @@
  *  WordWheelQuery:      Explorer search history
  */
 
-use windows_sys::Win32::{
-    Foundation::*,
-    System::Registry::*,
-};
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
+use windows_sys::Win32::System::Registry::*;
 
 fn to_wide(s: &str) -> Vec<u16> {
     OsStr::new(s).encode_wide().chain(Some(0)).collect()
@@ -30,10 +26,18 @@ fn to_wide(s: &str) -> Vec<u16> {
 
 unsafe fn clear_key_values(root: HKEY, subkey: &str) -> u32 {
     let path = to_wide(subkey);
-    let mut hkey: HKEY = 0;
+    let mut hkey: HKEY = std::ptr::null_mut();
 
-    let r = RegOpenKeyExW(root, path.as_ptr(), 0, KEY_READ | KEY_WRITE | KEY_WOW64_64KEY, &mut hkey);
-    if r != 0 { return 0; }
+    let r = RegOpenKeyExW(
+        root,
+        path.as_ptr(),
+        0,
+        KEY_READ | KEY_WRITE | KEY_WOW64_64KEY,
+        &mut hkey,
+    );
+    if r != 0 {
+        return 0;
+    }
 
     let mut deleted = 0u32;
     loop {
@@ -41,14 +45,27 @@ unsafe fn clear_key_values(root: HKEY, subkey: &str) -> u32 {
         let mut name_len = name.len() as u32;
 
         // Always enumerate index 0 — after deletion the next value shifts down
-        let r = RegEnumValueW(hkey, 0, name.as_mut_ptr(), &mut name_len,
-            std::ptr::null_mut(), std::ptr::null_mut(),
-            std::ptr::null_mut(), std::ptr::null_mut());
+        let r = RegEnumValueW(
+            hkey,
+            0,
+            name.as_mut_ptr(),
+            &mut name_len,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
 
-        if r != 0 { break; }
+        if r != 0 {
+            break;
+        }
 
         let r = RegDeleteValueW(hkey, name.as_ptr());
-        if r == 0 { deleted += 1; } else { break; }
+        if r == 0 {
+            deleted += 1;
+        } else {
+            break;
+        }
     }
 
     RegFlushKey(hkey);
@@ -84,13 +101,20 @@ pub fn clear_userassist() -> u32 {
 pub fn clear_shimcache() -> bool {
     // Delete and recreate the AppCompatCache value — kernel rebuilds on reboot
     let path = to_wide(r"SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache");
-    let val  = to_wide("AppCompatCache");
+    let val = to_wide("AppCompatCache");
 
     unsafe {
-        let mut hkey: HKEY = 0;
-        let r = RegOpenKeyExW(HKEY_LOCAL_MACHINE, path.as_ptr(), 0,
-            KEY_READ | KEY_WRITE | KEY_WOW64_64KEY, &mut hkey);
-        if r != 0 { return false; }
+        let mut hkey: HKEY = std::ptr::null_mut();
+        let r = RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            path.as_ptr(),
+            0,
+            KEY_READ | KEY_WRITE | KEY_WOW64_64KEY,
+            &mut hkey,
+        );
+        if r != 0 {
+            return false;
+        }
 
         let r = RegDeleteValueW(hkey, val.as_ptr());
         RegFlushKey(hkey);
@@ -108,18 +132,27 @@ pub fn clear_shimcache() -> bool {
 
 pub fn clear_recentdocs() -> bool {
     let r = unsafe {
-        delete_key_recursive(HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs")
+        delete_key_recursive(
+            HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs",
+        )
     };
-    eprintln!("[+] registry: RecentDocs {}", if r { "cleared" } else { "failed" });
+    eprintln!(
+        "[+] registry: RecentDocs {}",
+        if r { "cleared" } else { "failed" }
+    );
     r
 }
 
 // ── RunMRU ────────────────────────────────────────────────────────────────────
 
 pub fn clear_runmru() -> u32 {
-    let n = unsafe { clear_key_values(HKEY_CURRENT_USER,
-        r"Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU") };
+    let n = unsafe {
+        clear_key_values(
+            HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU",
+        )
+    };
     eprintln!("[+] registry: RunMRU — {} entry/entries cleared", n);
     n
 }
@@ -127,8 +160,12 @@ pub fn clear_runmru() -> u32 {
 // ── TypedURLs ─────────────────────────────────────────────────────────────────
 
 pub fn clear_typed_urls() -> u32 {
-    let n = unsafe { clear_key_values(HKEY_CURRENT_USER,
-        r"Software\Microsoft\Internet Explorer\TypedURLs") };
+    let n = unsafe {
+        clear_key_values(
+            HKEY_CURRENT_USER,
+            r"Software\Microsoft\Internet Explorer\TypedURLs",
+        )
+    };
     eprintln!("[+] registry: TypedURLs — {} entry/entries cleared", n);
     n
 }
@@ -138,18 +175,27 @@ pub fn clear_typed_urls() -> u32 {
 pub fn clear_bam() -> bool {
     // BAM stores last execution time per binary under user SID subkeys
     let r = unsafe {
-        delete_key_recursive(HKEY_LOCAL_MACHINE,
-            r"SYSTEM\CurrentControlSet\Services\bam\State\UserSettings")
+        delete_key_recursive(
+            HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Services\bam\State\UserSettings",
+        )
     };
-    eprintln!("[+] registry: BAM {}", if r { "cleared" } else { "failed/not present" });
+    eprintln!(
+        "[+] registry: BAM {}",
+        if r { "cleared" } else { "failed/not present" }
+    );
     r
 }
 
 // ── MUICache ──────────────────────────────────────────────────────────────────
 
 pub fn clear_muicache() -> u32 {
-    let n = unsafe { clear_key_values(HKEY_CURRENT_USER,
-        r"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache") };
+    let n = unsafe {
+        clear_key_values(
+            HKEY_CURRENT_USER,
+            r"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache",
+        )
+    };
     eprintln!("[+] registry: MUICache — {} entry/entries cleared", n);
     n
 }
@@ -157,8 +203,12 @@ pub fn clear_muicache() -> u32 {
 // ── WordWheelQuery (Explorer search history) ──────────────────────────────────
 
 pub fn clear_wordwheelquery() -> u32 {
-    let n = unsafe { clear_key_values(HKEY_CURRENT_USER,
-        r"Software\Microsoft\Windows\CurrentVersion\Explorer\WordWheelQuery") };
+    let n = unsafe {
+        clear_key_values(
+            HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\WordWheelQuery",
+        )
+    };
     eprintln!("[+] registry: WordWheelQuery — {} entry/entries cleared", n);
     n
 }
@@ -190,21 +240,26 @@ pub fn wipe_amcache() -> bool {
 #[derive(Debug, Default)]
 pub struct RegistryStats {
     pub userassist_cleared: u32,
-    pub shimcache_cleared:  bool,
-    pub bam_cleared:        bool,
-    pub other_cleared:      u32,
-    pub errors:             u32,
+    pub shimcache_cleared: bool,
+    pub bam_cleared: bool,
+    pub other_cleared: u32,
+    pub errors: u32,
 }
 
 pub fn clean_registry(verbose: bool) -> RegistryStats {
     let mut stats = RegistryStats::default();
 
-    stats.userassist_cleared = clear_userassist();
-    stats.shimcache_cleared  = clear_shimcache();
+    // Bind the results first: these fields are write-only (callers only read
+    // `.errors`), so struct-literal init would trip dead_code, while a direct
+    // assignment right after `Default::default()` trips field_reassign_with_default.
+    let userassist_cleared = clear_userassist();
+    let shimcache_cleared = clear_shimcache();
+    stats.userassist_cleared = userassist_cleared;
+    stats.shimcache_cleared = shimcache_cleared;
     clear_recentdocs();
     stats.other_cleared += clear_runmru();
     stats.other_cleared += clear_typed_urls();
-    stats.bam_cleared    = clear_bam();
+    stats.bam_cleared = clear_bam();
     stats.other_cleared += clear_muicache();
     stats.other_cleared += clear_wordwheelquery();
     wipe_amcache();

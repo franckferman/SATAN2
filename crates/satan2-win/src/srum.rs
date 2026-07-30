@@ -1,4 +1,3 @@
-#![cfg(target_os = "windows")]
 /*
  * srum.rs — System Resource Usage Monitor database removal
  *
@@ -70,12 +69,12 @@ fn overwrite_and_delete(path: &str) -> Result<u64, String> {
 
 #[derive(Debug, Default)]
 pub struct SrumStats {
-    pub wiped:      bool,
+    pub wiped: bool,
     pub bytes_freed: u64,
-    pub error:      Option<String>,
+    pub error: Option<String>,
 }
 
-pub fn wipe_srum(verbose: bool) -> SrumStats {
+pub fn wipe_srum(_verbose: bool) -> SrumStats {
     let mut stats = SrumStats::default();
 
     if !std::path::Path::new(SRUDB_PATH).exists() {
@@ -91,9 +90,12 @@ pub fn wipe_srum(verbose: bool) -> SrumStats {
 
     match overwrite_and_delete(SRUDB_PATH) {
         Ok(bytes) => {
-            stats.wiped      = true;
+            stats.wiped = true;
             stats.bytes_freed = bytes;
-            eprintln!("[+] srum: SRUDB.dat wiped and deleted ({} MiB)", bytes >> 20);
+            eprintln!(
+                "[+] srum: SRUDB.dat wiped and deleted ({} MiB)",
+                bytes >> 20
+            );
         }
         Err(e) => {
             eprintln!("[!] srum: {}", e);

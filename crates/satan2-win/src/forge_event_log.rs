@@ -1,5 +1,4 @@
-use std::ptr::null;
-use windows_sys::Win32::Foundation::*;
+use std::ptr::{null, null_mut};
 use windows_sys::Win32::System::EventLog::*;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -12,9 +11,11 @@ fn write_event(source: &str, ev_type: u16, category: u16, event_id: u32, msg: &s
     let src_w = wstr(source);
     unsafe {
         let h = RegisterEventSourceW(null(), src_w.as_ptr());
-        if h == 0 { return false; }
+        if h.is_null() {
+            return false;
+        }
 
-        let msg_w  = wstr(msg);
+        let msg_w = wstr(msg);
         let ptrs: [*const u16; 1] = [msg_w.as_ptr()];
 
         let ok = ReportEventW(
@@ -22,11 +23,11 @@ fn write_event(source: &str, ev_type: u16, category: u16, event_id: u32, msg: &s
             ev_type,
             category,
             event_id,
-            null(),          // lpUserSid
-            1,               // wNumStrings
-            0,               // dwDataSize
+            null_mut(), // lpUserSid
+            1,          // wNumStrings
+            0,          // dwDataSize
             ptrs.as_ptr(),
-            null(),          // lpRawData
+            null(), // lpRawData
         );
 
         DeregisterEventSource(h);
@@ -58,12 +59,12 @@ const MSI_PRODUCTS: &[&str] = &[
 
 // Application error events (event 1000 — application crash)
 const APP_CRASHES: &[(&str, &str)] = &[
-    ("chrome.exe",           "6adc727d"),
-    ("svchost.exe",          "c0000005"),
-    ("RuntimeBroker.exe",    "c0000005"),
-    ("SearchUI.exe",         "c000001d"),
+    ("chrome.exe", "6adc727d"),
+    ("svchost.exe", "c0000005"),
+    ("RuntimeBroker.exe", "c0000005"),
+    ("SearchUI.exe", "c000001d"),
     ("ShellExperienceHost.exe", "c0000409"),
-    ("msedge.exe",           "80000003"),
+    ("msedge.exe", "80000003"),
 ];
 
 // ESENT events (very common Application log noise)
@@ -86,11 +87,14 @@ const SPP_MSGS: &[&str] = &[
 
 pub struct EventLogForgeStats {
     pub events_written: u32,
-    pub errors:         u32,
+    pub errors: u32,
 }
 
 pub fn forge_event_log(verbose: bool) -> EventLogForgeStats {
-    let mut s   = EventLogForgeStats { events_written: 0, errors: 0 };
+    let mut s = EventLogForgeStats {
+        events_written: 0,
+        errors: 0,
+    };
 
     // ── MsiInstaller — software installation events ───────────────────────────
     for product in MSI_PRODUCTS {
@@ -99,12 +103,16 @@ pub fn forge_event_log(verbose: bool) -> EventLogForgeStats {
             product
         );
         // EventID 1033, category 0, Information
-        if write_event("MsiInstaller", EVENTLOG_INFORMATION_TYPE as u16, 0, 1033, &msg) {
+        if write_event("MsiInstaller", EVENTLOG_INFORMATION_TYPE, 0, 1033, &msg) {
             s.events_written += 1;
-            if verbose { eprintln!("[+] forge-evtlog: MsiInstaller → {}", product); }
+            if verbose {
+                eprintln!("[+] forge-evtlog: MsiInstaller → {}", product);
+            }
         } else {
             s.errors += 1;
-            if verbose { eprintln!("[!] forge-evtlog: MsiInstaller failed for {}", product); }
+            if verbose {
+                eprintln!("[!] forge-evtlog: MsiInstaller failed for {}", product);
+            }
         }
     }
 
@@ -118,13 +126,16 @@ pub fn forge_event_log(verbose: bool) -> EventLogForgeStats {
              Faulting process id: 0x{:04x}\n\
              Faulting application start time: 0x01da0000deadbeef\n\
              Faulting application path: C:\\Windows\\System32\\{}",
-            exe, exc_code,
+            exe,
+            exc_code,
             (0x1000u32 + (exe.len() as u32 * 7) % 0xe000),
             exe
         );
-        if write_event("Application Error", EVENTLOG_ERROR_TYPE as u16, 100, 1000, &msg) {
+        if write_event("Application Error", EVENTLOG_ERROR_TYPE, 100, 1000, &msg) {
             s.events_written += 1;
-            if verbose { eprintln!("[+] forge-evtlog: AppError → {}", exe); }
+            if verbose {
+                eprintln!("[+] forge-evtlog: AppError → {}", exe);
+            }
         } else {
             s.errors += 1;
         }
@@ -132,9 +143,11 @@ pub fn forge_event_log(verbose: bool) -> EventLogForgeStats {
 
     // ── ESENT — common database engine noise ──────────────────────────────────
     for &msg in ESENT_MSGS {
-        if write_event("ESENT", EVENTLOG_INFORMATION_TYPE as u16, 1, 102, msg) {
+        if write_event("ESENT", EVENTLOG_INFORMATION_TYPE, 1, 102, msg) {
             s.events_written += 1;
-            if verbose { eprintln!("[+] forge-evtlog: ESENT event"); }
+            if verbose {
+                eprintln!("[+] forge-evtlog: ESENT event");
+            }
         } else {
             s.errors += 1;
         }
@@ -142,16 +155,21 @@ pub fn forge_event_log(verbose: bool) -> EventLogForgeStats {
 
     // ── Security-SPP — licensing (very common on Win10/11) ───────────────────
     for &msg in SPP_MSGS {
-        if write_event("Security-SPP", EVENTLOG_INFORMATION_TYPE as u16, 0, 16394, msg) {
+        if write_event("Security-SPP", EVENTLOG_INFORMATION_TYPE, 0, 16394, msg) {
             s.events_written += 1;
-            if verbose { eprintln!("[+] forge-evtlog: Security-SPP"); }
+            if verbose {
+                eprintln!("[+] forge-evtlog: Security-SPP");
+            }
         } else {
             s.errors += 1;
         }
     }
 
     if verbose {
-        eprintln!("[+] forge-evtlog: {} events written, {} errors", s.events_written, s.errors);
+        eprintln!(
+            "[+] forge-evtlog: {} events written, {} errors",
+            s.events_written, s.errors
+        );
     }
     s
 }

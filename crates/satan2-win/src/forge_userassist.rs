@@ -1,19 +1,23 @@
 use std::ptr::{null, null_mut};
-use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::System::Registry::*;
 
 // ── LCG ──────────────────────────────────────────────────────────────────────
 
 struct Lcg(u64);
 impl Lcg {
-    fn new(seed: i64) -> Self { Lcg(seed as u64 ^ 0xc0ffee_dead_0000_beef) }
+    fn new(seed: i64) -> Self {
+        Lcg(seed as u64 ^ 0xc0ff_ee00_dead_beef)
+    }
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005)
-                       .wrapping_add(1_442_695_040_888_963_407);
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         self.0
     }
-    fn range(&mut self, lo: u64, hi: u64) -> u64 { lo + (self.next() % (hi - lo)) }
-    fn pick<'a, T>(&mut self, s: &'a [T]) -> &'a T { &s[(self.next() as usize) % s.len()] }
+    fn range(&mut self, lo: u64, hi: u64) -> u64 {
+        lo + (self.next() % (hi - lo))
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -24,11 +28,13 @@ fn wstr(s: &str) -> Vec<u16> {
 
 /// ROT13-encode the value name (UserAssist obfuscation).
 fn rot13(s: &str) -> String {
-    s.chars().map(|c| match c {
-        'a'..='m' | 'A'..='M' => (c as u8 + 13) as char,
-        'n'..='z' | 'N'..='Z' => (c as u8 - 13) as char,
-        _ => c,
-    }).collect()
+    s.chars()
+        .map(|c| match c {
+            'a'..='m' | 'A'..='M' => (c as u8 + 13) as char,
+            'n'..='z' | 'N'..='Z' => (c as u8 - 13) as char,
+            _ => c,
+        })
+        .collect()
 }
 
 /// Convert Unix epoch to Windows FILETIME (100-ns intervals since 1601-01-01).
@@ -89,13 +95,16 @@ const FAKE_EXES: &[&str] = &[
 
 pub struct UserAssistForgeStats {
     pub entries_written: u32,
-    pub errors:          u32,
+    pub errors: u32,
 }
 
 /// Write fake UserAssist execution-count entries to HKCU.
 /// ts_base: reference Unix timestamp (entries are scattered in the past week).
 pub fn forge_userassist(ts_base: i64, verbose: bool) -> UserAssistForgeStats {
-    let mut s   = UserAssistForgeStats { entries_written: 0, errors: 0 };
+    let mut s = UserAssistForgeStats {
+        entries_written: 0,
+        errors: 0,
+    };
     let mut lcg = Lcg::new(ts_base);
 
     for &guid in UA_GUIDS {
@@ -104,7 +113,7 @@ pub fn forge_userassist(ts_base: i64, verbose: bool) -> UserAssistForgeStats {
             guid
         );
         let kp_w = wstr(&key_path);
-        let mut hkey: HKEY = 0;
+        let mut hkey: HKEY = null_mut();
         let mut disposition: u32 = 0;
 
         let rc = unsafe {
@@ -123,21 +132,23 @@ pub fn forge_userassist(ts_base: i64, verbose: bool) -> UserAssistForgeStats {
 
         if rc != 0 {
             s.errors += 1;
-            if verbose { eprintln!("[!] forge-ua: RegCreateKeyEx {}: {}", guid, rc); }
+            if verbose {
+                eprintln!("[!] forge-ua: RegCreateKeyEx {}: {}", guid, rc);
+            }
             continue;
         }
 
         // Write a subset of FAKE_EXES per GUID to keep it realistic
         let n_exe = lcg.range(10, FAKE_EXES.len() as u64) as usize;
         for i in 0..n_exe {
-            let exe        = FAKE_EXES[i % FAKE_EXES.len()];
-            let val_name   = rot13(exe);
+            let exe = FAKE_EXES[i % FAKE_EXES.len()];
+            let val_name = rot13(exe);
             let val_name_w = wstr(&val_name);
-            let run_count  = lcg.range(3, 80) as u32;
-            let foc_count  = run_count + lcg.range(0, run_count as u64) as u32;
-            let foc_ms     = lcg.range(15_000, 900_000) as u32;
-            let ts_last    = ts_base - lcg.range(0, 7 * 86_400) as i64;
-            let data       = ua_entry_bytes(run_count, foc_count, foc_ms, ts_last);
+            let run_count = lcg.range(3, 80) as u32;
+            let foc_count = run_count + lcg.range(0, run_count as u64) as u32;
+            let foc_ms = lcg.range(15_000, 900_000) as u32;
+            let ts_last = ts_base - lcg.range(0, 7 * 86_400) as i64;
+            let data = ua_entry_bytes(run_count, foc_count, foc_ms, ts_last);
 
             let ret = unsafe {
                 RegSetValueExW(
@@ -152,10 +163,14 @@ pub fn forge_userassist(ts_base: i64, verbose: bool) -> UserAssistForgeStats {
 
             if ret == 0 {
                 s.entries_written += 1;
-                if verbose { eprintln!("[+] forge-ua: {} (run={})", exe, run_count); }
+                if verbose {
+                    eprintln!("[+] forge-ua: {} (run={})", exe, run_count);
+                }
             } else {
                 s.errors += 1;
-                if verbose { eprintln!("[!] forge-ua: RegSetValueEx {}: {}", exe, ret); }
+                if verbose {
+                    eprintln!("[!] forge-ua: RegSetValueEx {}: {}", exe, ret);
+                }
             }
         }
 

@@ -1,4 +1,3 @@
-#![cfg(target_os = "windows")]
 /*
  * hiberfil.rs — Hibernation file and pagefile artifact removal
  *
@@ -18,11 +17,10 @@
 
 use std::fs;
 use std::process::Command;
-use windows_sys::Win32::System::Registry::{
-    RegOpenKeyExW, RegSetValueExW, RegCloseKey,
-    HKEY_LOCAL_MACHINE, KEY_SET_VALUE,
-};
 use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+use windows_sys::Win32::System::Registry::{
+    RegCloseKey, RegOpenKeyExW, RegSetValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_SET_VALUE,
+};
 
 const MEMMAN_KEY: &str = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management";
 
@@ -47,22 +45,32 @@ fn wide(s: &str) -> Vec<u16> {
 }
 
 unsafe fn set_dword(subkey: &str, value: &str, data: u32) -> bool {
-    let mut hkey = 0isize;
-    let sub_w  = wide(subkey);
-    let val_w  = wide(value);
+    let mut hkey: HKEY = std::ptr::null_mut();
+    let sub_w = wide(subkey);
+    let val_w = wide(value);
 
-    let rc = RegOpenKeyExW(HKEY_LOCAL_MACHINE, sub_w.as_ptr(), 0, KEY_SET_VALUE, &mut hkey);
-    if rc != ERROR_SUCCESS as i32 { return false; }
+    let rc = RegOpenKeyExW(
+        HKEY_LOCAL_MACHINE,
+        sub_w.as_ptr(),
+        0,
+        KEY_SET_VALUE,
+        &mut hkey,
+    );
+    if rc != ERROR_SUCCESS {
+        return false;
+    }
 
     let bytes = data.to_le_bytes();
     let rc = RegSetValueExW(
-        hkey, val_w.as_ptr(), 0,
+        hkey,
+        val_w.as_ptr(),
+        0,
         4, // REG_DWORD
         bytes.as_ptr(),
         4,
     );
     RegCloseKey(hkey);
-    rc == ERROR_SUCCESS as i32
+    rc == ERROR_SUCCESS
 }
 
 fn set_clear_pagefile_at_shutdown(enable: bool) -> bool {
@@ -71,27 +79,41 @@ fn set_clear_pagefile_at_shutdown(enable: bool) -> bool {
 
 fn disable_pagefile() -> bool {
     // Set PagingFiles to empty string — takes effect on next reboot
-    use windows_sys::Win32::System::Registry::{RegOpenKeyExW, RegSetValueExW, RegCloseKey, KEY_SET_VALUE, HKEY_LOCAL_MACHINE};
     use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegSetValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_SET_VALUE,
+    };
 
     let sub_w = wide(MEMMAN_KEY);
     let val_w = wide("PagingFiles");
     let empty: Vec<u16> = vec![0u16]; // empty multi-sz
 
-    let mut hkey = 0isize;
-    let rc = unsafe { RegOpenKeyExW(HKEY_LOCAL_MACHINE, sub_w.as_ptr(), 0, KEY_SET_VALUE, &mut hkey) };
-    if rc != ERROR_SUCCESS as i32 { return false; }
+    let mut hkey: HKEY = std::ptr::null_mut();
+    let rc = unsafe {
+        RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            sub_w.as_ptr(),
+            0,
+            KEY_SET_VALUE,
+            &mut hkey,
+        )
+    };
+    if rc != ERROR_SUCCESS {
+        return false;
+    }
 
     let rc = unsafe {
         RegSetValueExW(
-            hkey, val_w.as_ptr(), 0,
+            hkey,
+            val_w.as_ptr(),
+            0,
             7, // REG_MULTI_SZ
             empty.as_ptr() as *const u8,
             (empty.len() * 2) as u32,
         )
     };
     unsafe { RegCloseKey(hkey) };
-    rc == ERROR_SUCCESS as i32
+    rc == ERROR_SUCCESS
 }
 
 // ── Public ────────────────────────────────────────────────────────────────────
@@ -99,18 +121,22 @@ fn disable_pagefile() -> bool {
 #[derive(Debug, Default)]
 pub struct HiberfilStats {
     pub hiberfile_disabled: bool,
-    pub hiberfile_existed:  bool,
+    pub hiberfile_existed: bool,
     pub pagefile_clear_set: bool,
-    pub pagefile_disabled:  bool,
-    pub errors:             u32,
+    pub pagefile_disabled: bool,
+    pub errors: u32,
 }
 
 pub fn wipe_hiberfil(disable_pf: bool, verbose: bool) -> HiberfilStats {
-    let mut s = HiberfilStats::default();
+    let mut s = HiberfilStats {
+        hiberfile_existed: hiberfil_exists(),
+        ..Default::default()
+    };
 
     // Hibernation
-    s.hiberfile_existed = hiberfil_exists();
-    if verbose { eprintln!("[*] hiberfil: hiberfil.sys exists: {}", s.hiberfile_existed); }
+    if verbose {
+        eprintln!("[*] hiberfil: hiberfil.sys exists: {}", s.hiberfile_existed);
+    }
 
     s.hiberfile_disabled = disable_hibernation();
     if s.hiberfile_disabled {

@@ -1,4 +1,3 @@
-#![cfg(target_os = "windows")]
 /*
  * event_log.rs — Windows Event Log clearing
  *
@@ -16,10 +15,7 @@
  */
 
 use std::process::Command;
-use windows_sys::Win32::{
-    Foundation::*,
-    System::EventLog::*,
-};
+use windows_sys::Win32::System::EventLog::*;
 
 static CHANNELS: &[&str] = &[
     "System",
@@ -52,7 +48,9 @@ fn clear_event_log_api(channel: &str) -> bool {
 
     unsafe {
         let handle = OpenEventLogW(std::ptr::null(), source.as_ptr());
-        if handle == 0 { return false; }
+        if handle.is_null() {
+            return false;
+        }
 
         let r = ClearEventLogW(handle, std::ptr::null());
         CloseEventLog(handle);
@@ -63,27 +61,36 @@ fn clear_event_log_api(channel: &str) -> bool {
 #[derive(Debug, Default)]
 pub struct EventLogStats {
     pub cleared: u32,
-    pub failed:  u32,
+    pub failed: u32,
 }
 
 pub fn clear_all_event_logs(verbose: bool) -> EventLogStats {
     let mut stats = EventLogStats::default();
 
     for channel in CHANNELS {
-        if verbose { eprint!("[*] event_log: clearing {}...", channel); }
+        if verbose {
+            eprint!("[*] event_log: clearing {}...", channel);
+        }
 
         let ok = wevtutil_clear(channel) || clear_event_log_api(channel);
 
         if ok {
-            if verbose { eprintln!(" OK"); }
+            if verbose {
+                eprintln!(" OK");
+            }
             stats.cleared += 1;
         } else {
-            if verbose { eprintln!(" SKIP (not present or no permission)"); }
+            if verbose {
+                eprintln!(" SKIP (not present or no permission)");
+            }
             stats.failed += 1;
         }
     }
 
-    eprintln!("[+] event_log: {}/{} channel(s) cleared",
-        stats.cleared, CHANNELS.len());
+    eprintln!(
+        "[+] event_log: {}/{} channel(s) cleared",
+        stats.cleared,
+        CHANNELS.len()
+    );
     stats
 }
