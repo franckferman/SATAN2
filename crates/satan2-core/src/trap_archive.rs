@@ -347,14 +347,12 @@ pub fn create_malformed_zip(out_path: &str, variant: MalformVariant, verbose: bo
             data[0] = 0x00;
             data[1] = 0x00;
         }
-        MalformVariant::InfiniteRecurse => {
+        MalformVariant::InfiniteRecurse if data.len() >= 22 => {
             // Point EOCD CDR offset to EOCD itself (self-referential)
-            if data.len() >= 22 {
-                let eocd_off = (data.len() - 22) as u32;
-                let self_ref = eocd_off.to_le_bytes();
-                let cdr_off_pos = data.len() - 6;
-                data[cdr_off_pos..cdr_off_pos + 4].copy_from_slice(&self_ref);
-            }
+            let eocd_off = (data.len() - 22) as u32;
+            let self_ref = eocd_off.to_le_bytes();
+            let cdr_off_pos = data.len() - 6;
+            data[cdr_off_pos..cdr_off_pos + 4].copy_from_slice(&self_ref);
         }
         _ => {}
     }
