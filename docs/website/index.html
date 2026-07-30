@@ -1022,7 +1022,7 @@
         <div class="exhibit-num">WARHEAD-03</div>
         <div class="exhibit-tag">Encryption · Multi-Layer</div>
         <h3>Multi-Cipher XTS Encryption</h3>
-        <p>AES-256, Twofish-256, Camellia-256, or Kuznyechik-256 (GOST R 34.12-2015) — plus an AES→Twofish cascade — all in XTS mode. PBKDF2-HMAC-SHA512 derivation. SATAN2CV container format; nested multi-layer encryption via the satan2-crypto API.</p>
+        <p>AES-256, Twofish-256, Camellia-256, or Kuznyechik-256 (GOST R 34.12-2015) — plus an AES→Twofish cascade — all in XTS mode. PBKDF2-HMAC-SHA512 derivation. SATAN2CV container format; nested multi-layer encryption via the <code>encrypt-layers</code> command — one full container per layer, independent algorithm and passphrase.</p>
         <span class="exhibit-status status-live">Live</span>
       </div>
 
@@ -1239,13 +1239,13 @@ satan2 kill-fs /dev/sdb</pre>
 
       <div class="ops-card">
         <div class="ops-platform">Linux — Encrypt</div>
-        <h3>Cascade Encryption</h3>
-        <pre>satan2 encrypt-file \
+        <h3>Nested Encryption</h3>
+        <pre>satan2 encrypt-layers \
   /path/to/sensitive.tar \
   sensitive.tar.cv \
-  --algo cascade
-<span style="color:#5a4f45"># Outer: AES-256-XTS
-# Inner: Twofish-256-XTS</span></pre>
+  --layer twofish --layer aes
+<span style="color:#5a4f45"># Outer: AES-256-XTS container
+# Inner: Twofish-256-XTS container</span></pre>
       </div>
     </div>
   </div>
