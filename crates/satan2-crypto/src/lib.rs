@@ -13,6 +13,6 @@ pub mod ops;
 pub mod xts;
 
 pub use extract::extract_dir;
-pub use hash::{HashAlgo, hash_file, hash_bytes, to_hex};
+pub use hash::{hash_bytes, hash_file, to_hex, HashAlgo};
 pub use header::AlgoId;
-pub use ops::Algorithm;
+pub use ops::{decrypt_layers, encrypt_layers, Algorithm, Layer};
