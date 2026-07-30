@@ -67,11 +67,13 @@ Legend: ✅ implemented · ❌ absent · ⚠️ partial · — N/A
 | pip / npm cache + logs | ✅ | ❌ | ❌ | ❌ |
 | dconf database (GNOME activity) | ✅ | ❌ | ❌ | ❌ |
 | GTK bookmarks | ✅ | ❌ | ❌ | ❌ |
-| NetworkManager profiles (WiFi creds) | ✅ | ❌ | ❌ | ❌ |
-| X11 sockets / ICE locks in /tmp | ✅ | ❌ | ❌ | ❌ |
+| NetworkManager profiles (WiFi creds) | ⚠️ ² | ❌ | ❌ | ❌ |
+| X11 / ICE lock files in /tmp | ✅ | ❌ | ❌ | ❌ |
 | /dev/shm cleanup | ✅ | ❌ | ❌ | ❌ |
 | SSH known_hosts + key audit | ✅ | ❌ | ❌ | ❌ |
 | Docker client credentials | ✅ | ❌ | ❌ | ❌ |
+
+² NetworkManager profiles are flagged by the self-audit module but not wiped.
 
 ---
 
@@ -122,7 +124,7 @@ Legend: ✅ implemented · ❌ absent · ⚠️ partial · — N/A
 | Hibernate file wipe | ✅ | ❌ | ❌ | ❌ |
 | PowerShell history | ✅ | ❌ | ❌ | ❌ |
 | ETW session manipulation | ✅ | ❌ | ❌ | ❌ |
-| Windows Defender exclusions | ✅ | ❌ | ❌ | ❌ |
+| Windows Defender history + quarantine wipe | ✅ | ❌ | ❌ | ❌ |
 
 ---
 
@@ -137,12 +139,15 @@ Legend: ✅ implemented · ❌ absent · ⚠️ partial · — N/A
 | O_DIRECT (bypass page cache) | ✅ | ❌ | ❌ | ❌ |
 | fsync per pass | ✅ | ❌ | ❌ | ❌ (!) |
 | Post-wipe verify pass | ✅ | ❌ | ❌ | ❌ |
-| NVMe sanitize (TCG OPAL / PSID) | ✅ | ❌ | ❌ | ❌ |
+| NVMe Sanitize / Format NVM | ✅ ¹ | ❌ | ❌ | ❌ |
 | ATA Secure Erase | ✅ | ❌ | ❌ | ❌ |
 | SSD TRIM-based wipe | ✅ | ❌ | ❌ | ❌ |
 | RAM purge (mmap fill + drop_caches) | ✅ | ❌ | ❌ | ❌ |
 | Swap wipe | ✅ | ❌ | ❌ | ❌ |
-| tmpfs enforcement (/tmp → RAM) | ✅ | ❌ | ❌ | ❌ |
+| Volatile area wipe (/tmp, /dev/shm, coredumps) | ✅ | ❌ | ❌ | ❌ |
+
+¹ TCG OPAL is detected but Revert/PSID is **not** implemented — SATAN2 falls back to
+NVMe Sanitize (crypto / block / overwrite erase) or Format NVM with secure-erase.
 
 ---
 
@@ -174,6 +179,10 @@ Legend: ✅ implemented · ❌ absent · ⚠️ partial · — N/A
 | Polymorphic builds (random nonce → unique SHA256) | ✅ | ❌ | ✅ | ❌ |
 | LTO + panic=abort + full strip (stealth mode) | ✅ | — | ✅ | ❌ |
 | Docker forensic artifact coverage | ✅ | ❌ | ❌ | ❌ |
+| Workspace test suite | ✅ 106 tests ³ | — | — | — |
+| Official GOST vectors (Kuznyechik, GOST R 34.12-2015) | ✅ | — | — | — |
+
+³ competitor test coverage not assessed.
 
 ---
 
@@ -204,7 +213,7 @@ Legend: ✅ implemented · ❌ absent · ⚠️ partial · — N/A
 |---|:---:|:---:|:---:|:---:|
 | **Linux log cleanup** | ✅ full | ✅ basic | ⚠️ wtmp/lastlog only | ❌ |
 | **Log rotation coverage** | ✅ glob | ❌ | ❌ | ❌ |
-| **Per-user desktop artifacts** | ✅ 17 targets | ❌ | ❌ | ❌ |
+| **Per-user desktop artifacts** | ✅ 16 targets ² | ❌ | ❌ | ❌ |
 | **Active forgery / deception** | ✅ 9 vectors | ❌ | ⚠️ lastlog only | ❌ |
 | **Windows forensics** | ✅ 25 modules | ❌ | ❌ | ❌ |
 | **Storage / disk wipe** | ✅ DoD/Gutmann/NVMe | ❌ | ❌ | ⚠️ no fsync |
