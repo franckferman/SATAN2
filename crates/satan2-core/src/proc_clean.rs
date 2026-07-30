@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 #[derive(Default)]
 pub struct ProcCleanStats {
     pub files_removed: u32,
-    pub dirs_removed:  u32,
-    pub errors:        u32,
+    pub dirs_removed: u32,
+    pub errors: u32,
 }
 
 // Save (atime_sec, mtime_sec) from metadata before we touch the file.
@@ -22,47 +22,75 @@ fn save_times(p: &Path) -> Option<(i64, i64)> {
 fn restore_times(p: &Path, atime: i64, mtime: i64) {
     use std::ffi::CString;
     let times = [
-        libc::timespec { tv_sec: atime, tv_nsec: 0 },
-        libc::timespec { tv_sec: mtime, tv_nsec: 0 },
+        libc::timespec {
+            tv_sec: atime,
+            tv_nsec: 0,
+        },
+        libc::timespec {
+            tv_sec: mtime,
+            tv_nsec: 0,
+        },
     ];
     if let Ok(c) = CString::new(p.as_os_str().as_encoded_bytes()) {
         unsafe {
-            libc::utimensat(libc::AT_FDCWD, c.as_ptr(), times.as_ptr(), libc::AT_SYMLINK_NOFOLLOW);
+            libc::utimensat(
+                libc::AT_FDCWD,
+                c.as_ptr(),
+                times.as_ptr(),
+                libc::AT_SYMLINK_NOFOLLOW,
+            );
         }
     }
 }
 
 fn remove_file_silent(p: &Path, s: &mut ProcCleanStats, verbose: bool) {
     match fs::remove_file(p) {
-        Ok(_)  => { s.files_removed += 1;
-                    if verbose { eprintln!("[+] proc-clean: removed {:?}", p); } }
+        Ok(_) => {
+            s.files_removed += 1;
+            if verbose {
+                eprintln!("[+] proc-clean: removed {:?}", p);
+            }
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => { s.errors += 1;
-                    if verbose { eprintln!("[!] proc-clean: {:?}: {}", p, e); } }
+        Err(e) => {
+            s.errors += 1;
+            if verbose {
+                eprintln!("[!] proc-clean: {:?}: {}", p, e);
+            }
+        }
     }
 }
 
 fn truncate_file(p: &Path, s: &mut ProcCleanStats, verbose: bool) {
     let ts = save_times(p); // snapshot before modification
-    match fs::OpenOptions::new().write(true).open(p) {
-        Ok(f)  => {
-            let _ = f.set_len(0);
-            s.files_removed += 1;
-            // Restore timestamps so FIM detects no mtime change
-            if let Some((a, m)) = ts { restore_times(p, a, m); }
-            if verbose { eprintln!("[+] proc-clean: truncated {:?}", p); }
+    if let Ok(f) = fs::OpenOptions::new().write(true).open(p) {
+        let _ = f.set_len(0);
+        s.files_removed += 1;
+        // Restore timestamps so FIM detects no mtime change
+        if let Some((a, m)) = ts {
+            restore_times(p, a, m);
         }
-        Err(_) => {}
+        if verbose {
+            eprintln!("[+] proc-clean: truncated {:?}", p);
+        }
     }
 }
 
 fn remove_dir_rec(p: &Path, s: &mut ProcCleanStats, verbose: bool) {
     match fs::remove_dir_all(p) {
-        Ok(_)  => { s.dirs_removed += 1;
-                    if verbose { eprintln!("[+] proc-clean: removed dir {:?}", p); } }
+        Ok(_) => {
+            s.dirs_removed += 1;
+            if verbose {
+                eprintln!("[+] proc-clean: removed dir {:?}", p);
+            }
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => { s.errors += 1;
-                    if verbose { eprintln!("[!] proc-clean: {:?}: {}", p, e); } }
+        Err(e) => {
+            s.errors += 1;
+            if verbose {
+                eprintln!("[!] proc-clean: {:?}: {}", p, e);
+            }
+        }
     }
 }
 
@@ -86,12 +114,16 @@ fn home_dirs() -> Vec<PathBuf> {
             if parts.len() >= 6 {
                 let home = parts[5];
                 let p = PathBuf::from(home);
-                if p.exists() && p != PathBuf::from("/") { homes.push(p); }
+                if p.exists() && p != std::path::Path::new("/") {
+                    homes.push(p);
+                }
             }
         }
     }
     if homes.is_empty() {
-        if let Ok(h) = std::env::var("HOME") { homes.push(PathBuf::from(h)); }
+        if let Ok(h) = std::env::var("HOME") {
+            homes.push(PathBuf::from(h));
+        }
     }
     homes
 }
@@ -124,7 +156,9 @@ pub fn clean_proc_artifacts(verbose: bool) -> ProcCleanStats {
             // less/man history
             home.join(".lesshst"),
         ];
-        for t in &targets { remove_file_silent(t, &mut s, verbose); }
+        for t in &targets {
+            remove_file_silent(t, &mut s, verbose);
+        }
 
         // Thumbnail caches
         for tc in &[
@@ -175,11 +209,14 @@ pub fn clean_proc_artifacts(verbose: bool) -> ProcCleanStats {
     if let Ok(rd) = fs::read_dir("/tmp") {
         for entry in rd.flatten() {
             let name = entry.file_name();
-            let ns   = name.to_string_lossy();
+            let ns = name.to_string_lossy();
             if ns.starts_with(".X") || ns.starts_with(".ICE") || ns.starts_with(".esd") {
                 let p = entry.path();
-                if p.is_file()   { remove_file_silent(&p, &mut s, verbose); }
-                else if p.is_dir() { remove_dir_rec(&p, &mut s, verbose); }
+                if p.is_file() {
+                    remove_file_silent(&p, &mut s, verbose);
+                } else if p.is_dir() {
+                    remove_dir_rec(&p, &mut s, verbose);
+                }
             }
         }
     }
@@ -254,7 +291,9 @@ pub fn clean_proc_artifacts(verbose: bool) -> ProcCleanStats {
         if let Ok(rd) = fs::read_dir(nm_conn) {
             for entry in rd.flatten() {
                 let p = entry.path();
-                if p.is_file() { remove_file_silent(&p, &mut s, verbose); }
+                if p.is_file() {
+                    remove_file_silent(&p, &mut s, verbose);
+                }
             }
         }
     }
@@ -265,8 +304,10 @@ pub fn clean_proc_artifacts(verbose: bool) -> ProcCleanStats {
     truncate_file(Path::new("/var/lib/wtmpdb/wtmpdb.db-shm"), &mut s, verbose);
 
     if verbose {
-        eprintln!("[+] proc-clean: {} files removed/truncated, {} dirs removed, {} errors",
-            s.files_removed, s.dirs_removed, s.errors);
+        eprintln!(
+            "[+] proc-clean: {} files removed/truncated, {} dirs removed, {} errors",
+            s.files_removed, s.dirs_removed, s.errors
+        );
     }
     s
 }

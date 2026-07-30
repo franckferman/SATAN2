@@ -27,15 +27,13 @@ const FITRIM: libc::c_ulong = 0xC018_5879;
 // Must match kernel struct fstrim_range
 #[repr(C)]
 struct FstrimRange {
-    start:  u64, // byte offset to start trimming
-    len:    u64, // number of bytes to trim (u64::MAX = whole device)
+    start: u64,  // byte offset to start trimming
+    len: u64,    // number of bytes to trim (u64::MAX = whole device)
     minlen: u64, // minimum extent size to discard (0 = any size)
 }
 
 // Filesystems that support FITRIM
-static TRIMMABLE_FS: &[&str] = &[
-    "ext4", "xfs", "btrfs", "f2fs", "exfat", "vfat", "ntfs",
-];
+static TRIMMABLE_FS: &[&str] = &["ext4", "xfs", "btrfs", "f2fs", "exfat", "vfat", "ntfs"];
 
 fn is_trimmable(fstype: &str) -> bool {
     TRIMMABLE_FS.contains(&fstype)
@@ -45,9 +43,9 @@ fn is_trimmable(fstype: &str) -> bool {
 
 #[derive(Debug)]
 pub struct MountEntry {
-    pub device:     String,
+    pub device: String,
     pub mountpoint: String,
-    pub fstype:     String,
+    pub fstype: String,
 }
 
 pub fn list_mounts() -> Result<Vec<MountEntry>> {
@@ -57,21 +55,32 @@ pub fn list_mounts() -> Result<Vec<MountEntry>> {
     for line in std::io::BufReader::new(f).lines() {
         let line = line.map_err(|e| e.to_string())?;
         let mut parts = line.split_whitespace();
-        let device     = parts.next().unwrap_or("").to_string();
+        let device = parts.next().unwrap_or("").to_string();
         let mountpoint = parts.next().unwrap_or("").to_string();
-        let fstype     = parts.next().unwrap_or("").to_string();
+        let fstype = parts.next().unwrap_or("").to_string();
 
         // Skip pseudo-filesystems
-        if device.starts_with("none") || device == "tmpfs" || device == "proc"
-            || device == "sysfs" || device == "devtmpfs" || device == "cgroup"
-            || device == "cgroup2" || device == "pstore" || device == "bpf"
-            || device == "securityfs" || mountpoint == "/dev"
+        if device.starts_with("none")
+            || device == "tmpfs"
+            || device == "proc"
+            || device == "sysfs"
+            || device == "devtmpfs"
+            || device == "cgroup"
+            || device == "cgroup2"
+            || device == "pstore"
+            || device == "bpf"
+            || device == "securityfs"
+            || mountpoint == "/dev"
         {
             continue;
         }
 
         if !mountpoint.is_empty() && !fstype.is_empty() {
-            entries.push(MountEntry { device, mountpoint, fstype });
+            entries.push(MountEntry {
+                device,
+                mountpoint,
+                fstype,
+            });
         }
     }
     Ok(entries)
@@ -80,18 +89,15 @@ pub fn list_mounts() -> Result<Vec<MountEntry>> {
 // ── FITRIM ────────────────────────────────────────────────────────────────────
 
 pub fn fitrim_mountpoint(mountpoint: &str) -> Result<u64> {
-    let dir = fs::File::open(mountpoint)
-        .map_err(|e| format!("open {}: {}", mountpoint, e))?;
+    let dir = fs::File::open(mountpoint).map_err(|e| format!("open {}: {}", mountpoint, e))?;
 
     let mut range = FstrimRange {
-        start:  0,
-        len:    u64::MAX,
+        start: 0,
+        len: u64::MAX,
         minlen: 0,
     };
 
-    let r = unsafe {
-        libc::ioctl(dir.as_raw_fd(), FITRIM, &mut range as *mut FstrimRange)
-    };
+    let r = unsafe { libc::ioctl(dir.as_raw_fd(), FITRIM, &mut range as *mut FstrimRange) };
 
     if r < 0 {
         let errno = unsafe { *libc::__errno_location() };
@@ -115,22 +121,37 @@ pub fn trim_all_mounts(stats: &mut TrimStats) -> Result<()> {
     let mounts = list_mounts()?;
 
     for mount in &mounts {
-        if !is_trimmable(&mount.fstype) { continue; }
+        if !is_trimmable(&mount.fstype) {
+            continue;
+        }
 
-        eprintln!("[*] trim: {} ({}) on {}",
-            mount.device, mount.fstype, mount.mountpoint);
+        eprintln!(
+            "[*] trim: {} ({}) on {}",
+            mount.device, mount.fstype, mount.mountpoint
+        );
 
         match fitrim_mountpoint(&mount.mountpoint) {
             Ok(bytes) => {
-                eprintln!("[+] trim: {} MiB discarded on {}", bytes >> 20, mount.mountpoint);
-                stats.mounts_trimmed  += 1;
+                eprintln!(
+                    "[+] trim: {} MiB discarded on {}",
+                    bytes >> 20,
+                    mount.mountpoint
+                );
+                stats.mounts_trimmed += 1;
                 stats.bytes_discarded += bytes;
             }
             Err(e) => {
                 // EOPNOTSUPP is common on HDDs or VMs — not a real error
-                let errno = e.split('=').last().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
+                let errno = e
+                    .split('=')
+                    .next_back()
+                    .and_then(|s| s.parse::<i32>().ok())
+                    .unwrap_or(0);
                 if errno == libc::EOPNOTSUPP || errno == libc::ENOTTY {
-                    eprintln!("[*] trim: {} not supported (HDD or no discard)", mount.mountpoint);
+                    eprintln!(
+                        "[*] trim: {} not supported (HDD or no discard)",
+                        mount.mountpoint
+                    );
                 } else {
                     eprintln!("[!] trim: {}: {}", mount.mountpoint, e);
                     stats.errors += 1;
@@ -139,7 +160,11 @@ pub fn trim_all_mounts(stats: &mut TrimStats) -> Result<()> {
         }
     }
 
-    eprintln!("[+] trim: {} mount(s) trimmed, {} MiB discarded, {} error(s)",
-        stats.mounts_trimmed, stats.bytes_discarded >> 20, stats.errors);
+    eprintln!(
+        "[+] trim: {} mount(s) trimmed, {} MiB discarded, {} error(s)",
+        stats.mounts_trimmed,
+        stats.bytes_discarded >> 20,
+        stats.errors
+    );
     Ok(())
 }

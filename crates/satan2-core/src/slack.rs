@@ -21,10 +21,10 @@ const FREE_WIPE_CHUNK: usize = 4 * 1024 * 1024; // 4 MiB
 
 #[derive(Debug, Default)]
 pub struct SlackStats {
-    pub files_processed:  u64,
+    pub files_processed: u64,
     pub files_with_slack: u64,
-    pub bytes_wiped:      u64,
-    pub errors:           u64,
+    pub bytes_wiped: u64,
+    pub errors: u64,
 }
 
 // ── libc wrappers ─────────────────────────────────────────────────────────────
@@ -33,7 +33,9 @@ fn lstat_size(path: &str) -> Option<(u64, u64)> {
     let path_c = std::ffi::CString::new(path).ok()?;
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
     let r = unsafe { libc::lstat(path_c.as_ptr(), &mut st) };
-    if r < 0 { return None; }
+    if r < 0 {
+        return None;
+    }
     Some((st.st_size as u64, st.st_blocks as u64 * 512))
 }
 
@@ -44,7 +46,9 @@ fn statfs_bsize(path: &str) -> u64 {
     };
     let mut sfs: libc::statfs = unsafe { std::mem::zeroed() };
     let r = unsafe { libc::statfs(path_c.as_ptr(), &mut sfs) };
-    if r < 0 || sfs.f_bsize <= 0 { return 4096; }
+    if r < 0 || sfs.f_bsize <= 0 {
+        return 4096;
+    }
     sfs.f_bsize as u64
 }
 
@@ -55,8 +59,10 @@ fn statfs_free(path: &str) -> u64 {
     };
     let mut sfs: libc::statfs = unsafe { std::mem::zeroed() };
     let r = unsafe { libc::statfs(path_c.as_ptr(), &mut sfs) };
-    if r < 0 { return 0; }
-    sfs.f_bavail as u64 * sfs.f_bsize as u64
+    if r < 0 {
+        return 0;
+    }
+    sfs.f_bavail * sfs.f_bsize as u64
 }
 
 // ── Single-file cluster tip wipe ──────────────────────────────────────────────
@@ -64,7 +70,10 @@ fn statfs_free(path: &str) -> u64 {
 pub fn slack_wipe_file(path: &str, stats: &mut SlackStats) -> Result<()> {
     let (file_size, alloc_bytes) = match lstat_size(path) {
         Some(v) => v,
-        None    => { stats.errors += 1; return Ok(()); }
+        None => {
+            stats.errors += 1;
+            return Ok(());
+        }
     };
 
     if file_size == 0 {
@@ -121,9 +130,9 @@ pub fn slack_wipe_file(path: &str, stats: &mut SlackStats) -> Result<()> {
 
     unsafe { libc::fsync(f.as_raw_fd()) };
 
-    stats.files_processed  += 1;
+    stats.files_processed += 1;
     stats.files_with_slack += 1;
-    stats.bytes_wiped      += slack_len;
+    stats.bytes_wiped += slack_len;
     Ok(())
 }
 
@@ -152,20 +161,29 @@ pub fn slack_wipe_dir(path: &str, recursive: bool, stats: &mut SlackStats) -> Re
 
     for entry in walker {
         let entry = entry.map_err(|e| e.to_string())?;
-        if !entry.file_type().is_file() { continue; }
+        if !entry.file_type().is_file() {
+            continue;
+        }
 
         let ep = entry.path().to_str().unwrap_or("");
         let _ = slack_wipe_file(ep, stats);
 
-        if stats.files_processed % 50_000 == 0 && stats.files_processed > 0 {
-            eprint!("\r[>] slack: {} files, {} MiB wiped",
-                stats.files_processed, stats.bytes_wiped >> 20);
+        if stats.files_processed.is_multiple_of(50_000) && stats.files_processed > 0 {
+            eprint!(
+                "\r[>] slack: {} files, {} MiB wiped",
+                stats.files_processed,
+                stats.bytes_wiped >> 20
+            );
         }
     }
 
-    eprintln!("\r[+] slack: {} files, {} with slack, {} MiB, {} error(s)",
-        stats.files_processed, stats.files_with_slack,
-        stats.bytes_wiped >> 20, stats.errors);
+    eprintln!(
+        "\r[+] slack: {} files, {} with slack, {} MiB, {} error(s)",
+        stats.files_processed,
+        stats.files_with_slack,
+        stats.bytes_wiped >> 20,
+        stats.errors
+    );
     Ok(())
 }
 
@@ -173,7 +191,11 @@ pub fn slack_wipe_dir(path: &str, recursive: bool, stats: &mut SlackStats) -> Re
 
 pub fn slack_wipe_free(mountpoint: &str, stats: &mut SlackStats) -> Result<()> {
     let free = statfs_free(mountpoint);
-    eprintln!("[*] slack_wipe_free: ~{} MiB free on {}", free >> 20, mountpoint);
+    eprintln!(
+        "[*] slack_wipe_free: ~{} MiB free on {}",
+        free >> 20,
+        mountpoint
+    );
 
     // mkstemp equivalent using libc
     let template = format!("{}/{}XXXXXX", mountpoint, ".satan2_freewipe_");
@@ -182,7 +204,9 @@ pub fn slack_wipe_free(mountpoint: &str, stats: &mut SlackStats) -> Result<()> {
 
     let fd = unsafe { libc::mkstemp(tmp_cstr.as_mut_ptr() as *mut libc::c_char) };
     if fd < 0 {
-        return Err(format!("mkstemp failed: errno={}", unsafe { *libc::__errno_location() }));
+        return Err(format!("mkstemp failed: errno={}", unsafe {
+            *libc::__errno_location()
+        }));
     }
 
     // Unlink immediately — file stays open, disappears from dir now
@@ -196,14 +220,16 @@ pub fn slack_wipe_free(mountpoint: &str, stats: &mut SlackStats) -> Result<()> {
     let t0 = Instant::now();
 
     loop {
-        let w = unsafe {
-            libc::write(fd, zeros.as_ptr() as *const libc::c_void, FREE_WIPE_CHUNK)
-        };
+        let w = unsafe { libc::write(fd, zeros.as_ptr() as *const libc::c_void, FREE_WIPE_CHUNK) };
 
         if w < 0 {
             let errno = unsafe { *libc::__errno_location() };
-            if errno == libc::ENOSPC { break; }
-            if errno == libc::EINTR  { continue; }
+            if errno == libc::ENOSPC {
+                break;
+            }
+            if errno == libc::EINTR {
+                continue;
+            }
             unsafe { libc::close(fd) };
             stats.errors += 1;
             return Err(format!("write error: errno={}", errno));
@@ -216,7 +242,11 @@ pub fn slack_wipe_free(mountpoint: &str, stats: &mut SlackStats) -> Result<()> {
 
         let elapsed = t0.elapsed().as_secs_f64();
         let mbs = total_written as f64 / (1024.0 * 1024.0) / elapsed.max(0.001);
-        eprint!("\r[>] free wipe: {} MiB  {:.1} MiB/s  ", total_written >> 20, mbs);
+        eprint!(
+            "\r[>] free wipe: {} MiB  {:.1} MiB/s  ",
+            total_written >> 20,
+            mbs
+        );
     }
 
     unsafe {
@@ -224,6 +254,9 @@ pub fn slack_wipe_free(mountpoint: &str, stats: &mut SlackStats) -> Result<()> {
         libc::close(fd);
     }
 
-    eprintln!("\n[+] slack_wipe_free: {} MiB of free space zeroed", total_written >> 20);
+    eprintln!(
+        "\n[+] slack_wipe_free: {} MiB of free space zeroed",
+        total_written >> 20
+    );
     Ok(())
 }

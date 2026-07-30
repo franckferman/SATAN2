@@ -17,10 +17,10 @@ use std::process::Command;
 
 #[derive(Debug, Default)]
 pub struct NetCleanStats {
-    pub arp_flushed:       bool,
+    pub arp_flushed: bool,
     pub conntrack_flushed: bool,
-    pub dns_flushed:       bool,
-    pub errors:            u32,
+    pub dns_flushed: bool,
+    pub errors: u32,
 }
 
 // ── ARP / NDP neighbor cache ──────────────────────────────────────────────────
@@ -118,7 +118,9 @@ fn flush_dnsmasq() -> bool {
     // Send SIGHUP to dnsmasq to flush its cache
     if let Ok(output) = Command::new("pidof").arg("dnsmasq").output() {
         let pid_str = String::from_utf8_lossy(&output.stdout);
-        if let Some(pid) = pid_str.trim().split_whitespace().next()
+        if let Some(pid) = pid_str
+            .split_whitespace()
+            .next()
             .and_then(|s| s.parse::<i32>().ok())
         {
             return unsafe { libc::kill(pid, libc::SIGHUP) } == 0;
@@ -157,6 +159,8 @@ pub fn net_clean_all(stats: &mut NetCleanStats) {
     flush_conntrack(stats);
     flush_dns_cache(stats);
 
-    eprintln!("[+] net_clean: arp={} conntrack={} dns={}",
-        stats.arp_flushed, stats.conntrack_flushed, stats.dns_flushed);
+    eprintln!(
+        "[+] net_clean: arp={} conntrack={} dns={}",
+        stats.arp_flushed, stats.conntrack_flushed, stats.dns_flushed
+    );
 }

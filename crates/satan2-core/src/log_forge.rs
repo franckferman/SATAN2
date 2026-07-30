@@ -3,23 +3,23 @@ use std::io::Write;
 use std::path::Path;
 
 pub struct LogForgeOpts {
-    pub fake_ip:          String,
-    pub fake_user:        String,
-    pub n_sessions:       u32,
-    pub ts_start:         i64,
-    pub ts_end:           i64,
-    pub fake_hostname:    Option<String>,
-    pub do_auth:          bool,
-    pub do_syslog:        bool,
+    pub fake_ip: String,
+    pub fake_user: String,
+    pub n_sessions: u32,
+    pub ts_start: i64,
+    pub ts_end: i64,
+    pub fake_hostname: Option<String>,
+    pub do_auth: bool,
+    pub do_syslog: bool,
     pub bash_history_paths: Vec<String>,
-    pub verbose:          bool,
+    pub verbose: bool,
 }
 
 #[derive(Default)]
 pub struct LogForgeStats {
     pub lines_written: u64,
     pub files_touched: u32,
-    pub errors:        u32,
+    pub errors: u32,
 }
 
 // ── LCG PRNG ─────────────────────────────────────────────────────────────────
@@ -27,12 +27,16 @@ pub struct LogForgeStats {
 struct Lcg(u64);
 
 impl Lcg {
-    fn new(seed: i64) -> Self { Lcg(seed as u64 ^ 0xdeadbeef_cafe1234) }
+    fn new(seed: i64) -> Self {
+        Lcg(seed as u64 ^ 0xdeadbeef_cafe1234)
+    }
 
     fn next(&mut self) -> u64 {
         // Knuth LCG with 64-bit constants (Numerical Recipes)
-        self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005)
-                       .wrapping_add(1_442_695_040_888_963_407);
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         self.0
     }
 
@@ -45,8 +49,7 @@ impl Lcg {
     }
 
     fn b64_char(&mut self) -> char {
-        const A: &[u8] =
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         A[(self.next() % 64) as usize] as char
     }
 
@@ -54,7 +57,9 @@ impl Lcg {
         (0..n).map(|_| self.b64_char()).collect()
     }
 
-    fn pid(&mut self) -> u32 { self.range(1_000, 65_000) as u32 }
+    fn pid(&mut self) -> u32 {
+        self.range(1_000, 65_000) as u32
+    }
 }
 
 // ── Timestamp helpers ─────────────────────────────────────────────────────────
@@ -62,11 +67,14 @@ impl Lcg {
 fn epoch_to_syslog_ts(ts: i64) -> String {
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     unsafe { libc::localtime_r(&ts, &mut tm) };
-    let months = ["Jan","Feb","Mar","Apr","May","Jun",
-                  "Jul","Aug","Sep","Oct","Nov","Dec"];
+    let months = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
     let mo = months[(tm.tm_mon as usize).min(11)];
-    format!("{} {:2} {:02}:{:02}:{:02}",
-        mo, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec)
+    format!(
+        "{} {:2} {:02}:{:02}:{:02}",
+        mo, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec
+    )
 }
 
 fn get_hostname() -> String {
@@ -84,30 +92,45 @@ fn rsa_fingerprint(lcg: &mut Lcg) -> String {
 
 /// Full SSH session: accept → pam open → [sudo] → disconnect → pam close
 fn gen_ssh_session(
-    host: &str, user: &str, ip: &str,
-    ts_open: i64, ts_close: i64,
+    host: &str,
+    user: &str,
+    ip: &str,
+    ts_open: i64,
+    ts_close: i64,
     lcg: &mut Lcg,
 ) -> Vec<String> {
-    let pid     = lcg.pid();
-    let port    = lcg.range(49_152, 65_535);
+    let pid = lcg.pid();
+    let port = lcg.range(49_152, 65_535);
     let session = lcg.range(1, 300);
-    let uid     = lcg.range(1_000, 9_999);
-    let fp      = rsa_fingerprint(lcg);
-    let t_o     = epoch_to_syslog_ts(ts_open);
-    let t_c     = epoch_to_syslog_ts(ts_close);
+    let uid = lcg.range(1_000, 9_999);
+    let fp = rsa_fingerprint(lcg);
+    let t_o = epoch_to_syslog_ts(ts_open);
+    let t_c = epoch_to_syslog_ts(ts_close);
     vec![
-        format!("{} {} sshd[{}]: Accepted publickey for {} from {} port {} ssh2: RSA {}",
-            t_o, host, pid, user, ip, port, fp),
-        format!("{} {} sshd[{}]: pam_unix(sshd:session): session opened for user {}(uid={}) by (uid=0)",
-            t_o, host, pid, user, uid),
-        format!("{} {} systemd-logind[1]: New session {} of user {}.",
-            t_o, host, session, user),
-        format!("{} {} sshd[{}]: Disconnected from user {} {} port {}",
-            t_c, host, pid, user, ip, port),
-        format!("{} {} sshd[{}]: pam_unix(sshd:session): session closed for user {}",
-            t_c, host, pid, user),
-        format!("{} {} systemd-logind[1]: Session {} logged out. Waiting for processes to exit.",
-            t_c, host, session),
+        format!(
+            "{} {} sshd[{}]: Accepted publickey for {} from {} port {} ssh2: RSA {}",
+            t_o, host, pid, user, ip, port, fp
+        ),
+        format!(
+            "{} {} sshd[{}]: pam_unix(sshd:session): session opened for user {}(uid={}) by (uid=0)",
+            t_o, host, pid, user, uid
+        ),
+        format!(
+            "{} {} systemd-logind[1]: New session {} of user {}.",
+            t_o, host, session, user
+        ),
+        format!(
+            "{} {} sshd[{}]: Disconnected from user {} {} port {}",
+            t_c, host, pid, user, ip, port
+        ),
+        format!(
+            "{} {} sshd[{}]: pam_unix(sshd:session): session closed for user {}",
+            t_c, host, pid, user
+        ),
+        format!(
+            "{} {} systemd-logind[1]: Session {} logged out. Waiting for processes to exit.",
+            t_c, host, session
+        ),
     ]
 }
 
@@ -126,14 +149,12 @@ const SUDO_CMDS: &[&str] = &[
     "/usr/bin/passwd root",
 ];
 
-fn gen_sudo_event(
-    host: &str, user: &str, ts: i64, cmd: &str, lcg: &mut Lcg,
-) -> Vec<String> {
+fn gen_sudo_event(host: &str, user: &str, ts: i64, cmd: &str, lcg: &mut Lcg) -> Vec<String> {
     let pid = lcg.pid();
     let uid = lcg.range(1_000, 9_999);
     let pts = lcg.range(0, 5);
-    let t   = epoch_to_syslog_ts(ts);
-    let t2  = epoch_to_syslog_ts(ts + lcg.range(2, 60) as i64);
+    let t = epoch_to_syslog_ts(ts);
+    let t2 = epoch_to_syslog_ts(ts + lcg.range(2, 60) as i64);
     vec![
         format!("{} {} sudo[{}]:   {} : TTY=pts/{} ; PWD=/home/{} ; USER=root ; COMMAND={}",
             t, host, pid, user, pts, user, cmd),
@@ -154,8 +175,14 @@ fn gen_cron_events(host: &str, ts: i64) -> Vec<String> {
 }
 
 const SERVICES: &[&str] = &[
-    "nginx", "rsyslog", "networkd-dispatcher", "snapd", "udisksd",
-    "cron", "ntp", "unattended-upgrades",
+    "nginx",
+    "rsyslog",
+    "networkd-dispatcher",
+    "snapd",
+    "udisksd",
+    "cron",
+    "ntp",
+    "unattended-upgrades",
 ];
 
 fn gen_syslog_events(host: &str, ts: i64, lcg: &mut Lcg) -> Vec<String> {
@@ -242,76 +269,123 @@ const BASH_CMDS: &[&str] = &[
 fn append_lines(path: &str, lines: &[String]) -> Result<usize, String> {
     // Create parent directory if it doesn't exist (best-effort)
     if let Some(p) = Path::new(path).parent() {
-        if !p.as_os_str().is_empty() { let _ = std::fs::create_dir_all(p); }
+        if !p.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(p);
+        }
     }
     let mut f = OpenOptions::new()
-        .append(true).create(true).open(path)
+        .append(true)
+        .create(true)
+        .open(path)
         .map_err(|e| format!("open {}: {}", path, e))?;
     let mut n = 0;
-    for l in lines { writeln!(f, "{}", l).map_err(|e| e.to_string())?; n += 1; }
+    for l in lines {
+        writeln!(f, "{}", l).map_err(|e| e.to_string())?;
+        n += 1;
+    }
     Ok(n)
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 pub fn forge_logs(opts: &LogForgeOpts) -> LogForgeStats {
-    let mut s   = LogForgeStats::default();
+    let mut s = LogForgeStats::default();
     let mut lcg = Lcg::new(opts.ts_start ^ opts.n_sessions as i64);
-    let host    = opts.fake_hostname.clone().unwrap_or_else(get_hostname);
-    let window  = (opts.ts_end - opts.ts_start).max(1);
-    let step    = window / opts.n_sessions.max(1) as i64;
+    let host = opts.fake_hostname.clone().unwrap_or_else(get_hostname);
+    let window = (opts.ts_end - opts.ts_start).max(1);
+    let step = window / opts.n_sessions.max(1) as i64;
 
     // ── Auth log ──────────────────────────────────────────────────────────────
     if opts.do_auth {
         let candidates = ["/var/log/auth.log", "/var/log/secure"];
-        let path = candidates.iter()
-            .find(|p| Path::new(p).exists()
-               || Path::new(p).parent().map(|d| d.exists()).unwrap_or(false))
-            .copied().unwrap_or("/var/log/auth.log");
+        let path = candidates
+            .iter()
+            .find(|p| {
+                Path::new(p).exists() || Path::new(p).parent().map(|d| d.exists()).unwrap_or(false)
+            })
+            .copied()
+            .unwrap_or("/var/log/auth.log");
 
         let mut lines: Vec<String> = Vec::new();
         for i in 0..opts.n_sessions {
-            let ts_open  = opts.ts_start + i as i64 * step + lcg.range(0, step.min(120) as u64) as i64;
-            let dur      = lcg.range(120, 3_600) as i64;
+            let ts_open =
+                opts.ts_start + i as i64 * step + lcg.range(0, step.min(120) as u64) as i64;
+            let dur = lcg.range(120, 3_600) as i64;
             let ts_close = (ts_open + dur).min(opts.ts_end);
 
-            lines.extend(gen_ssh_session(&host, &opts.fake_user, &opts.fake_ip, ts_open, ts_close, &mut lcg));
+            lines.extend(gen_ssh_session(
+                &host,
+                &opts.fake_user,
+                &opts.fake_ip,
+                ts_open,
+                ts_close,
+                &mut lcg,
+            ));
 
             if lcg.range(0, 3) < 2 {
                 let ts_sudo = ts_open + lcg.range(30, dur.min(1_800) as u64) as i64;
-                let cmd     = lcg.pick(SUDO_CMDS);
-                lines.extend(gen_sudo_event(&host, &opts.fake_user, ts_sudo, cmd, &mut lcg));
+                let cmd = lcg.pick(SUDO_CMDS);
+                lines.extend(gen_sudo_event(
+                    &host,
+                    &opts.fake_user,
+                    ts_sudo,
+                    cmd,
+                    &mut lcg,
+                ));
             }
         }
 
         match append_lines(path, &lines) {
-            Ok(n)  => { s.lines_written += n as u64; s.files_touched += 1;
-                        if opts.verbose { eprintln!("[+] forge-log auth: {} lines → {}", n, path); } }
-            Err(e) => { s.errors += 1;
-                        if opts.verbose { eprintln!("[!] forge-log auth: {}", e); } }
+            Ok(n) => {
+                s.lines_written += n as u64;
+                s.files_touched += 1;
+                if opts.verbose {
+                    eprintln!("[+] forge-log auth: {} lines → {}", n, path);
+                }
+            }
+            Err(e) => {
+                s.errors += 1;
+                if opts.verbose {
+                    eprintln!("[!] forge-log auth: {}", e);
+                }
+            }
         }
     }
 
     // ── Syslog ────────────────────────────────────────────────────────────────
     if opts.do_syslog {
         let candidates = ["/var/log/syslog", "/var/log/messages"];
-        let path = candidates.iter()
-            .find(|p| Path::new(p).exists()
-               || Path::new(p).parent().map(|d| d.exists()).unwrap_or(false))
-            .copied().unwrap_or("/var/log/syslog");
+        let path = candidates
+            .iter()
+            .find(|p| {
+                Path::new(p).exists() || Path::new(p).parent().map(|d| d.exists()).unwrap_or(false)
+            })
+            .copied()
+            .unwrap_or("/var/log/syslog");
 
         let mut lines: Vec<String> = Vec::new();
         for i in 0..opts.n_sessions {
             let ts = opts.ts_start + i as i64 * step;
             lines.extend(gen_syslog_events(&host, ts, &mut lcg));
-            if i % 4 == 0 { lines.extend(gen_cron_events(&host, ts)); }
+            if i % 4 == 0 {
+                lines.extend(gen_cron_events(&host, ts));
+            }
         }
 
         match append_lines(path, &lines) {
-            Ok(n)  => { s.lines_written += n as u64; s.files_touched += 1;
-                        if opts.verbose { eprintln!("[+] forge-log syslog: {} lines → {}", n, path); } }
-            Err(e) => { s.errors += 1;
-                        if opts.verbose { eprintln!("[!] forge-log syslog: {}", e); } }
+            Ok(n) => {
+                s.lines_written += n as u64;
+                s.files_touched += 1;
+                if opts.verbose {
+                    eprintln!("[+] forge-log syslog: {} lines → {}", n, path);
+                }
+            }
+            Err(e) => {
+                s.errors += 1;
+                if opts.verbose {
+                    eprintln!("[!] forge-log syslog: {}", e);
+                }
+            }
         }
     }
 
@@ -322,10 +396,19 @@ pub fn forge_logs(opts: &LogForgeOpts) -> LogForgeStats {
             .map(|_| lcg.pick(BASH_CMDS).to_string())
             .collect();
         match append_lines(hist_path, &lines) {
-            Ok(n)  => { s.lines_written += n as u64; s.files_touched += 1;
-                        if opts.verbose { eprintln!("[+] forge-log bash_history: {} lines → {}", n, hist_path); } }
-            Err(e) => { s.errors += 1;
-                        if opts.verbose { eprintln!("[!] forge-log bash_history: {}", e); } }
+            Ok(n) => {
+                s.lines_written += n as u64;
+                s.files_touched += 1;
+                if opts.verbose {
+                    eprintln!("[+] forge-log bash_history: {} lines → {}", n, hist_path);
+                }
+            }
+            Err(e) => {
+                s.errors += 1;
+                if opts.verbose {
+                    eprintln!("[!] forge-log bash_history: {}", e);
+                }
+            }
         }
     }
 

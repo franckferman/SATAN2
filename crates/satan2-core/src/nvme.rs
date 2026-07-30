@@ -16,24 +16,24 @@ use crate::{fill_random, iowr, Result};
 
 #[repr(C)]
 struct NvmePassthruCmd {
-    opcode:       u8,
-    flags:        u8,
-    rsvd1:        u16,
-    nsid:         u32,
-    cdw2:         u32,
-    cdw3:         u32,
-    metadata:     u64,
-    addr:         u64,
+    opcode: u8,
+    flags: u8,
+    rsvd1: u16,
+    nsid: u32,
+    cdw2: u32,
+    cdw3: u32,
+    metadata: u64,
+    addr: u64,
     metadata_len: u32,
-    data_len:     u32,
-    cdw10:        u32,
-    cdw11:        u32,
-    cdw12:        u32,
-    cdw13:        u32,
-    cdw14:        u32,
-    cdw15:        u32,
-    timeout_ms:   u32,
-    result:       u32,
+    data_len: u32,
+    cdw10: u32,
+    cdw11: u32,
+    cdw12: u32,
+    cdw13: u32,
+    cdw14: u32,
+    cdw15: u32,
+    timeout_ms: u32,
+    result: u32,
 }
 
 const NVME_IOCTL_ADMIN_CMD: libc::c_ulong =
@@ -45,28 +45,35 @@ const NVME_SANICAP_OWS: u32 = 1 << 1; // Overwrite Sanitize
 const NVME_SANICAP_CES: u32 = 1 << 2; // Crypto Erase Sanitize
 
 // Sanitize action codes (CDW10 bits [2:0])
-const NVME_SANACT_BLOCK_ERASE:  u32 = 2;
-const NVME_SANACT_OVERWRITE:    u32 = 3;
+const NVME_SANACT_BLOCK_ERASE: u32 = 2;
+const NVME_SANACT_OVERWRITE: u32 = 3;
 const NVME_SANACT_CRYPTO_ERASE: u32 = 4;
 
 // Format NVM SES field (CDW10 bits [11:9])
-const NVME_FORMAT_SES_NONE:      u32 = 0 << 9;
+const NVME_FORMAT_SES_NONE: u32 = 0 << 9;
 const NVME_FORMAT_SES_USER_DATA: u32 = 1 << 9;
-const NVME_FORMAT_SES_CRYPTO:    u32 = 2 << 9;
+const NVME_FORMAT_SES_CRYPTO: u32 = 2 << 9;
 
 // Admin command opcodes
 const NVME_ADM_CMD_IDENTIFY: u8 = 0x06;
 const NVME_ADM_CMD_SANITIZE: u8 = 0x84;
-const NVME_ADM_CMD_FORMAT:   u8 = 0x80;
+const NVME_ADM_CMD_FORMAT: u8 = 0x80;
 
 // ── NVMe status decoding ──────────────────────────────────────────────────────
 
-fn nvme_sct(result: u32) -> u32 { (result >> 9) & 0x7 }
-fn nvme_sc(result: u32)  -> u32 { result & 0xFF }
+fn nvme_sct(result: u32) -> u32 {
+    (result >> 9) & 0x7
+}
+fn nvme_sc(result: u32) -> u32 {
+    result & 0xFF
+}
 
 // ── Low-level passthrough ─────────────────────────────────────────────────────
 
-unsafe fn do_admin_cmd(fd: libc::c_int, cmd: &mut NvmePassthruCmd) -> std::result::Result<(), String> {
+unsafe fn do_admin_cmd(
+    fd: libc::c_int,
+    cmd: &mut NvmePassthruCmd,
+) -> std::result::Result<(), String> {
     let r = libc::ioctl(fd, NVME_IOCTL_ADMIN_CMD, cmd as *mut NvmePassthruCmd);
     if r == 0 {
         return Ok(());
@@ -75,10 +82,14 @@ unsafe fn do_admin_cmd(fd: libc::c_int, cmd: &mut NvmePassthruCmd) -> std::resul
     if errno == libc::EIO && cmd.result != 0 {
         return Err(format!(
             "NVMe error: SCT={} SC=0x{:02x}",
-            nvme_sct(cmd.result), nvme_sc(cmd.result)
+            nvme_sct(cmd.result),
+            nvme_sc(cmd.result)
         ));
     }
-    Err(format!("ioctl NVME_IOCTL_ADMIN_CMD failed: errno={}", errno))
+    Err(format!(
+        "ioctl NVME_IOCTL_ADMIN_CMD failed: errno={}",
+        errno
+    ))
 }
 
 // ── Identify Controller ───────────────────────────────────────────────────────
@@ -86,11 +97,11 @@ unsafe fn do_admin_cmd(fd: libc::c_int, cmd: &mut NvmePassthruCmd) -> std::resul
 fn identify_controller(fd: libc::c_int) -> Result<Vec<u8>> {
     let mut buf = vec![0u8; 4096];
     let mut cmd = NvmePassthruCmd {
-        opcode:   NVME_ADM_CMD_IDENTIFY,
-        nsid:     0,
-        addr:     buf.as_mut_ptr() as u64,
+        opcode: NVME_ADM_CMD_IDENTIFY,
+        nsid: 0,
+        addr: buf.as_mut_ptr() as u64,
         data_len: 4096,
-        cdw10:    1, // CNS=1: Identify Controller
+        cdw10: 1, // CNS=1: Identify Controller
         ..unsafe { std::mem::zeroed() }
     };
     unsafe { do_admin_cmd(fd, &mut cmd) }?;
@@ -111,7 +122,7 @@ pub fn nvme_get_sanicap(fd: libc::c_int) -> Result<u32> {
 pub fn nvme_sanitize(fd: libc::c_int, sanact: u32) -> Result<()> {
     let mut cmd = NvmePassthruCmd {
         opcode: NVME_ADM_CMD_SANITIZE,
-        cdw10:  sanact,
+        cdw10: sanact,
         ..unsafe { std::mem::zeroed() }
     };
     unsafe { do_admin_cmd(fd, &mut cmd) }
@@ -124,11 +135,11 @@ pub fn nvme_wait_sanitize(fd: libc::c_int) -> Result<()> {
 
     loop {
         let mut cmd = NvmePassthruCmd {
-            opcode:   0x02, // Get Log Page
-            nsid:     0xFFFF_FFFF,
-            addr:     log.as_mut_ptr() as u64,
+            opcode: 0x02, // Get Log Page
+            nsid: 0xFFFF_FFFF,
+            addr: log.as_mut_ptr() as u64,
             data_len: 512,
-            cdw10:    0x0081 | (((512 / 4 - 1) as u32) << 16), // LID=0x81, NUMDL
+            cdw10: 0x0081 | (((512 / 4 - 1) as u32) << 16), // LID=0x81, NUMDL
             ..unsafe { std::mem::zeroed() }
         };
 
@@ -171,11 +182,11 @@ pub fn nvme_format_ses(fd: libc::c_int, ses: u32) -> Result<()> {
     // Read current LBAF from namespace 1
     let mut ns_buf = vec![0u8; 4096];
     let mut id_cmd = NvmePassthruCmd {
-        opcode:   NVME_ADM_CMD_IDENTIFY,
-        nsid:     0xFFFF_FFFF,
-        addr:     ns_buf.as_mut_ptr() as u64,
+        opcode: NVME_ADM_CMD_IDENTIFY,
+        nsid: 0xFFFF_FFFF,
+        addr: ns_buf.as_mut_ptr() as u64,
         data_len: 4096,
-        cdw10:    0, // CNS=0: Identify Namespace
+        cdw10: 0, // CNS=0: Identify Namespace
         ..unsafe { std::mem::zeroed() }
     };
 
@@ -188,9 +199,9 @@ pub fn nvme_format_ses(fd: libc::c_int, ses: u32) -> Result<()> {
     let cdw10 = ses | (flbas as u32) | NVME_FORMAT_SES_NONE;
 
     let mut fmt_cmd = NvmePassthruCmd {
-        opcode:     NVME_ADM_CMD_FORMAT,
-        nsid:       0xFFFF_FFFF,
-        cdw10:      cdw10,
+        opcode: NVME_ADM_CMD_FORMAT,
+        nsid: 0xFFFF_FFFF,
+        cdw10,
         timeout_ms: 600_000,
         ..unsafe { std::mem::zeroed() }
     };
@@ -205,7 +216,8 @@ pub fn nvme_format_ses(fd: libc::c_int, ses: u32) -> Result<()> {
 // ── USB bridge detection ──────────────────────────────────────────────────────
 
 fn is_usb_bridge(dev: &str) -> bool {
-    let devname = Path::new(dev).file_name()
+    let devname = Path::new(dev)
+        .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("");
     let syslink = format!("/sys/block/{}/device/../../../subsystem", devname);
@@ -260,7 +272,8 @@ impl NvmeDev {
         let fd = dev.fd();
 
         let sanicap = nvme_get_sanicap(fd)?;
-        eprintln!("[*] NVMe SANICAP: BES={} OWS={} CES={}",
+        eprintln!(
+            "[*] NVMe SANICAP: BES={} OWS={} CES={}",
             (sanicap & NVME_SANICAP_BES) != 0,
             (sanicap & NVME_SANICAP_OWS) != 0,
             (sanicap & NVME_SANICAP_CES) != 0,
@@ -297,8 +310,8 @@ impl NvmeDev {
             let act = NVME_SANACT_OVERWRITE | (1 << 4); // OWPASS=1
             let mut cmd = NvmePassthruCmd {
                 opcode: NVME_ADM_CMD_SANITIZE,
-                cdw10:  act,
-                cdw11:  pattern,
+                cdw10: act,
+                cdw11: pattern,
                 ..unsafe { std::mem::zeroed() }
             };
             if unsafe { do_admin_cmd(fd, &mut cmd) }.is_ok() {
