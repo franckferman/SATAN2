@@ -1,27 +1,25 @@
-#![cfg(target_os = "windows")]
-
 use windows_sys::Win32::{
     Foundation::*,
     Security::*,
+    System::Threading::{GetCurrentProcess, OpenProcessToken},
 };
 
-const SE_BACKUP_NAME:  &[u8]  = b"SeBackupPrivilege\0";
-const SE_RESTORE_NAME: &[u8]  = b"SeRestorePrivilege\0";
+const SE_BACKUP_NAME: &[u8] = b"SeBackupPrivilege\0";
+const SE_RESTORE_NAME: &[u8] = b"SeRestorePrivilege\0";
 
 unsafe fn enable_privilege(name: &[u8]) -> bool {
-    let mut token: HANDLE = 0;
+    let mut token: HANDLE = std::ptr::null_mut();
     if OpenProcessToken(
         GetCurrentProcess(),
         TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
         &mut token,
-    ) == 0 { return false; }
+    ) == 0
+    {
+        return false;
+    }
 
     let mut luid: LUID = std::mem::zeroed();
-    if LookupPrivilegeValueA(
-        std::ptr::null(),
-        name.as_ptr(),
-        &mut luid,
-    ) == 0 {
+    if LookupPrivilegeValueA(std::ptr::null(), name.as_ptr(), &mut luid) == 0 {
         CloseHandle(token);
         return false;
     }
@@ -50,6 +48,10 @@ pub fn enable_backup_restore() -> Result<(), String> {
     unsafe {
         let b = enable_privilege(SE_BACKUP_NAME);
         let r = enable_privilege(SE_RESTORE_NAME);
-        if b && r { Ok(()) } else { Err("Could not enable SeBackupPrivilege/SeRestorePrivilege".into()) }
+        if b && r {
+            Ok(())
+        } else {
+            Err("Could not enable SeBackupPrivilege/SeRestorePrivilege".into())
+        }
     }
 }

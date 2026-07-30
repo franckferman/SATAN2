@@ -1,4 +1,3 @@
-#![cfg(target_os = "windows")]
 /*
  * schtasks.rs — Scheduled task artifact cleanup
  *
@@ -29,14 +28,11 @@ use std::path::Path;
 use std::process::Command;
 use walkdir::WalkDir;
 
-const TASKS_DIR:     &str = r"C:\Windows\System32\Tasks";
+const TASKS_DIR: &str = r"C:\Windows\System32\Tasks";
 const TASKS_WOW_DIR: &str = r"C:\Windows\SysWOW64\Tasks";
 
 // Microsoft-owned task subtrees — do NOT touch these
-const MS_PREFIXES: &[&str] = &[
-    "Microsoft\\",
-    "Microsoft/",
-];
+const MS_PREFIXES: &[&str] = &["Microsoft\\", "Microsoft/"];
 
 fn is_microsoft_task(path: &Path, base: &Path) -> bool {
     if let Ok(rel) = path.strip_prefix(base) {
@@ -75,10 +71,10 @@ fn overwrite_and_delete(path: &Path, stats: &mut SchtasksStats) {
 
 #[derive(Debug, Default)]
 pub struct SchtasksStats {
-    pub xml_deleted:    u32,
-    pub tasks_deleted:  u32,
-    pub bytes_freed:    u64,
-    pub errors:         u32,
+    pub xml_deleted: u32,
+    pub tasks_deleted: u32,
+    pub bytes_freed: u64,
+    pub errors: u32,
 }
 
 /// Delete a specific task by name via schtasks.exe.
@@ -101,22 +97,34 @@ pub fn delete_task(task_name: &str, stats: &mut SchtasksStats) {
 /// Wipe all non-Microsoft task XML files.
 fn wipe_tasks_dir(dir: &str, stats: &mut SchtasksStats, verbose: bool) {
     let base = Path::new(dir);
-    if !base.exists() { return; }
+    if !base.exists() {
+        return;
+    }
 
     for entry in WalkDir::new(base).follow_links(false).into_iter().flatten() {
-        if !entry.file_type().is_file() { continue; }
+        if !entry.file_type().is_file() {
+            continue;
+        }
 
         let path = entry.path();
 
         // Skip XML files that belong to Microsoft subtrees
-        if is_microsoft_task(path, base) { continue; }
+        if is_microsoft_task(path, base) {
+            continue;
+        }
 
-        if verbose { eprintln!("[*] schtasks: wiping {}", path.display()); }
+        if verbose {
+            eprintln!("[*] schtasks: wiping {}", path.display());
+        }
         overwrite_and_delete(path, stats);
     }
 }
 
-pub fn wipe_scheduled_tasks(task_names: &[&str], destroy_all: bool, verbose: bool) -> SchtasksStats {
+pub fn wipe_scheduled_tasks(
+    task_names: &[&str],
+    destroy_all: bool,
+    verbose: bool,
+) -> SchtasksStats {
     let mut stats = SchtasksStats::default();
 
     // Targeted: delete specific tasks by name via API
@@ -125,12 +133,19 @@ pub fn wipe_scheduled_tasks(task_names: &[&str], destroy_all: bool, verbose: boo
     }
 
     if destroy_all {
-        if verbose { eprintln!("[*] schtasks: wiping non-Microsoft tasks in {}", TASKS_DIR); }
+        if verbose {
+            eprintln!("[*] schtasks: wiping non-Microsoft tasks in {}", TASKS_DIR);
+        }
         wipe_tasks_dir(TASKS_DIR, &mut stats, verbose);
         wipe_tasks_dir(TASKS_WOW_DIR, &mut stats, verbose);
     }
 
-    eprintln!("[+] schtasks: {} XML(s) deleted, {} task(s) via API, {} MiB, {} error(s)",
-        stats.xml_deleted, stats.tasks_deleted, stats.bytes_freed >> 20, stats.errors);
+    eprintln!(
+        "[+] schtasks: {} XML(s) deleted, {} task(s) via API, {} MiB, {} error(s)",
+        stats.xml_deleted,
+        stats.tasks_deleted,
+        stats.bytes_freed >> 20,
+        stats.errors
+    );
     stats
 }

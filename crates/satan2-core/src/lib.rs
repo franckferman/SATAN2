@@ -1,58 +1,64 @@
-pub mod exif_forge;
-pub mod trap_archive;
-pub mod stego_honey;
-pub mod nvme;
 pub mod ata;
-pub mod wipe;
-pub mod fs_kill;
-pub mod meta;
-pub mod slack;
-pub mod log_poison;
-pub mod swap;
-pub mod net_clean;
 pub mod auditd;
-pub mod ssh_clean;
-pub mod trim;
-pub mod tmpfs;
+pub mod exif_forge;
+pub mod fs_kill;
+pub mod log_poison;
+pub mod meta;
+pub mod net_clean;
+pub mod nvme;
 pub mod opsec_linux;
+pub mod slack;
+pub mod ssh_clean;
+pub mod stego_honey;
+pub mod swap;
+pub mod tmpfs;
+pub mod trap_archive;
+pub mod trim;
+pub mod wipe;
 
-#[cfg(target_os = "linux")]
-pub mod browser_linux;
-#[cfg(target_os = "linux")]
-pub mod pkg_logs;
-#[cfg(target_os = "linux")]
-pub mod log_forge;
-#[cfg(target_os = "linux")]
-pub mod pkg_forge;
-#[cfg(target_os = "linux")]
-pub mod ssh_forge;
 #[cfg(target_os = "linux")]
 pub mod browser_forge;
 #[cfg(target_os = "linux")]
-pub mod forge_wtmp;
-#[cfg(target_os = "linux")]
-pub mod forge_journal;
-#[cfg(target_os = "linux")]
-pub mod secure_delete;
-#[cfg(target_os = "linux")]
-pub mod memory_wipe;
-#[cfg(target_os = "linux")]
-pub mod proc_clean;
+pub mod browser_linux;
 #[cfg(target_os = "linux")]
 pub mod docker_cover;
 #[cfg(target_os = "linux")]
-pub mod self_audit;
+pub mod forge_journal;
+#[cfg(target_os = "linux")]
+pub mod forge_wtmp;
 #[cfg(target_os = "linux")]
 pub mod lastlog_forge;
+#[cfg(target_os = "linux")]
+pub mod log_forge;
+#[cfg(target_os = "linux")]
+pub mod memory_wipe;
+#[cfg(target_os = "linux")]
+pub mod pkg_forge;
+#[cfg(target_os = "linux")]
+pub mod pkg_logs;
+#[cfg(target_os = "linux")]
+pub mod proc_clean;
+#[cfg(target_os = "linux")]
+pub mod secure_delete;
+#[cfg(target_os = "linux")]
+pub mod self_audit;
+#[cfg(target_os = "linux")]
+pub mod ssh_forge;
 
 pub type Result<T> = std::result::Result<T, String>;
 
 pub const fn iowr(ty: u8, nr: u8, size: usize) -> libc::c_ulong {
-    (3 << 30) | ((size as libc::c_ulong) << 16) | ((ty as libc::c_ulong) << 8) | (nr as libc::c_ulong)
+    (3 << 30)
+        | ((size as libc::c_ulong) << 16)
+        | ((ty as libc::c_ulong) << 8)
+        | (nr as libc::c_ulong)
 }
 
 pub const fn iow(ty: u8, nr: u8, size: usize) -> libc::c_ulong {
-    (1 << 30) | ((size as libc::c_ulong) << 16) | ((ty as libc::c_ulong) << 8) | (nr as libc::c_ulong)
+    (1 << 30)
+        | ((size as libc::c_ulong) << 16)
+        | ((ty as libc::c_ulong) << 8)
+        | (nr as libc::c_ulong)
 }
 
 /// Zero a memory slice without the compiler optimizing it away.

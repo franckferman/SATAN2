@@ -1,6 +1,11 @@
 # Rust build artifacts
 /target/
+/dist/
 Cargo.lock
+
+# Local isolated toolchain / link shims (machine-specific, not for release)
+/.toolchain/
+/.cargo/
 
 # IDE
 .idea/

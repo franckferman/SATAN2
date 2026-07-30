@@ -3,11 +3,10 @@
 
 use crate::header::AlgoId;
 use crate::kuznyechik::Kuznyechik;
-use crate::xts::{
-    Aes256Cipher, CamelliaCipher, CascadeAesTwofish, TwofishCipher, Xts,
-};
+use crate::xts::{Aes256Cipher, CamelliaCipher, CascadeAesTwofish, TwofishCipher, Xts};
 
 /// Unified cipher engine that dispatches to the correct XTS variant at runtime.
+#[allow(clippy::large_enum_variant)] // variants are constructed once per container; boxing would just add indirection
 pub enum Engine {
     Aes(Xts<Aes256Cipher>),
     Twofish(Xts<TwofishCipher>),
@@ -25,15 +24,15 @@ impl Engine {
 
         match algo {
             AlgoId::Aes256 => Engine::Aes(Xts {
-                data_cipher:  Aes256Cipher::new(k1),
+                data_cipher: Aes256Cipher::new(k1),
                 tweak_cipher: Aes256Cipher::new(k2),
             }),
             AlgoId::Twofish256 => Engine::Twofish(Xts {
-                data_cipher:  TwofishCipher::new(k1),
+                data_cipher: TwofishCipher::new(k1),
                 tweak_cipher: TwofishCipher::new(k2),
             }),
             AlgoId::Camellia256 => Engine::Camellia(Xts {
-                data_cipher:  CamelliaCipher::new(k1),
+                data_cipher: CamelliaCipher::new(k1),
                 tweak_cipher: CamelliaCipher::new(k2),
             }),
             AlgoId::AesTwofish => {
@@ -41,12 +40,12 @@ impl Engine {
                 let ck1: &[u8; 32] = cascade_key[0..32].try_into().unwrap();
                 let ck2: &[u8; 32] = cascade_key[32..64].try_into().unwrap();
                 Engine::Cascade(Xts {
-                    data_cipher:  CascadeAesTwofish::new(k1, ck1),
+                    data_cipher: CascadeAesTwofish::new(k1, ck1),
                     tweak_cipher: CascadeAesTwofish::new(k2, ck2),
                 })
             }
             AlgoId::Kuznyechik => Engine::Kuznyechik(Xts {
-                data_cipher:  Kuznyechik::new(k1),
+                data_cipher: Kuznyechik::new(k1),
                 tweak_cipher: Kuznyechik::new(k2),
             }),
         }
@@ -54,20 +53,20 @@ impl Engine {
 
     pub fn encrypt_sector(&self, sector: u64, data: &mut [u8]) {
         match self {
-            Engine::Aes(x)        => x.encrypt_sector(sector, data),
-            Engine::Twofish(x)    => x.encrypt_sector(sector, data),
-            Engine::Camellia(x)   => x.encrypt_sector(sector, data),
-            Engine::Cascade(x)    => x.encrypt_sector(sector, data),
+            Engine::Aes(x) => x.encrypt_sector(sector, data),
+            Engine::Twofish(x) => x.encrypt_sector(sector, data),
+            Engine::Camellia(x) => x.encrypt_sector(sector, data),
+            Engine::Cascade(x) => x.encrypt_sector(sector, data),
             Engine::Kuznyechik(x) => x.encrypt_sector(sector, data),
         }
     }
 
     pub fn decrypt_sector(&self, sector: u64, data: &mut [u8]) {
         match self {
-            Engine::Aes(x)        => x.decrypt_sector(sector, data),
-            Engine::Twofish(x)    => x.decrypt_sector(sector, data),
-            Engine::Camellia(x)   => x.decrypt_sector(sector, data),
-            Engine::Cascade(x)    => x.decrypt_sector(sector, data),
+            Engine::Aes(x) => x.decrypt_sector(sector, data),
+            Engine::Twofish(x) => x.decrypt_sector(sector, data),
+            Engine::Camellia(x) => x.decrypt_sector(sector, data),
+            Engine::Cascade(x) => x.decrypt_sector(sector, data),
             Engine::Kuznyechik(x) => x.decrypt_sector(sector, data),
         }
     }

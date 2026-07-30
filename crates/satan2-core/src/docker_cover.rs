@@ -6,10 +6,10 @@ use std::path::{Path, PathBuf};
 
 #[derive(Default)]
 pub struct DockerCoverStats {
-    pub logs_wiped:     u32,
-    pub configs_wiped:  u32,
-    pub dirs_removed:   u32,
-    pub errors:         u32,
+    pub logs_wiped: u32,
+    pub configs_wiped: u32,
+    pub dirs_removed: u32,
+    pub errors: u32,
 }
 
 fn home_dirs() -> Vec<PathBuf> {
@@ -19,7 +19,9 @@ fn home_dirs() -> Vec<PathBuf> {
             let parts: Vec<&str> = line.split(':').collect();
             if parts.len() >= 6 {
                 let p = PathBuf::from(parts[5]);
-                if p.exists() && p != PathBuf::from("/") { homes.push(p); }
+                if p.exists() && p != std::path::Path::new("/") {
+                    homes.push(p);
+                }
             }
         }
     }
@@ -31,46 +33,76 @@ fn truncate(p: &Path, s: &mut DockerCoverStats, verbose: bool) {
         Ok(f) => {
             let _ = f.set_len(0);
             s.logs_wiped += 1;
-            if verbose { eprintln!("[+] docker-cover: truncated {:?}", p); }
+            if verbose {
+                eprintln!("[+] docker-cover: truncated {:?}", p);
+            }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => { s.errors += 1;
-                    if verbose { eprintln!("[!] docker-cover: {:?}: {}", p, e); } }
+        Err(e) => {
+            s.errors += 1;
+            if verbose {
+                eprintln!("[!] docker-cover: {:?}: {}", p, e);
+            }
+        }
     }
 }
 
 fn overwrite_json(p: &Path, content: &[u8], s: &mut DockerCoverStats, verbose: bool) {
-    if !p.exists() { return; }
+    if !p.exists() {
+        return;
+    }
     match fs::write(p, content) {
-        Ok(_)  => { s.configs_wiped += 1;
-                    if verbose { eprintln!("[+] docker-cover: cleared {:?}", p); } }
-        Err(e) => { s.errors += 1;
-                    if verbose { eprintln!("[!] docker-cover: {:?}: {}", p, e); } }
+        Ok(_) => {
+            s.configs_wiped += 1;
+            if verbose {
+                eprintln!("[+] docker-cover: cleared {:?}", p);
+            }
+        }
+        Err(e) => {
+            s.errors += 1;
+            if verbose {
+                eprintln!("[!] docker-cover: {:?}: {}", p, e);
+            }
+        }
     }
 }
 
 fn remove_dir(p: &Path, s: &mut DockerCoverStats, verbose: bool) {
     match fs::remove_dir_all(p) {
-        Ok(_)  => { s.dirs_removed += 1;
-                    if verbose { eprintln!("[+] docker-cover: removed {:?}", p); } }
+        Ok(_) => {
+            s.dirs_removed += 1;
+            if verbose {
+                eprintln!("[+] docker-cover: removed {:?}", p);
+            }
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => { s.errors += 1;
-                    if verbose { eprintln!("[!] docker-cover: {:?}: {}", p, e); } }
+        Err(e) => {
+            s.errors += 1;
+            if verbose {
+                eprintln!("[!] docker-cover: {:?}: {}", p, e);
+            }
+        }
     }
 }
 
 fn wipe_container_logs(base: &Path, s: &mut DockerCoverStats, verbose: bool) {
     let containers = base.join("containers");
-    if !containers.exists() { return; }
-    let Ok(dir) = fs::read_dir(&containers) else { return };
+    if !containers.exists() {
+        return;
+    }
+    let Ok(dir) = fs::read_dir(&containers) else {
+        return;
+    };
     for entry in dir.flatten() {
         let cdir = entry.path();
-        if !cdir.is_dir() { continue; }
+        if !cdir.is_dir() {
+            continue;
+        }
         // <container_id>-json.log  — the main structured log file
         if let Ok(inner) = fs::read_dir(&cdir) {
             for f in inner.flatten() {
                 let name = f.file_name();
-                let ns   = name.to_string_lossy().to_string();
+                let ns = name.to_string_lossy().to_string();
                 if ns.ends_with("-json.log") || ns.ends_with(".log") {
                     truncate(&f.path(), s, verbose);
                 }
@@ -91,7 +123,9 @@ fn wipe_build_cache(base: &Path, s: &mut DockerCoverStats, verbose: bool) {
     // Buildkit / legacy builder cache directories
     for cache_dir in &["buildkit", "tmp/buildkit"] {
         let p = base.join(cache_dir);
-        if p.is_dir() { remove_dir(&p, s, verbose); }
+        if p.is_dir() {
+            remove_dir(&p, s, verbose);
+        }
     }
 }
 
@@ -117,24 +151,27 @@ pub fn wipe_docker_artifacts(verbose: bool) -> DockerCoverStats {
     // ── Per-user Docker client config ──────────────────────────────────────────
     for home in home_dirs() {
         let docker_cfg = home.join(".docker");
-        if !docker_cfg.exists() { continue; }
+        if !docker_cfg.exists() {
+            continue;
+        }
 
         // config.json holds auth tokens, credential helper config
         let config = docker_cfg.join("config.json");
         overwrite_json(&config, b"{\"auths\":{}}\n", &mut s, verbose);
 
         // Credential helper token caches
-        for name in &[
-            "credentials.json", ".credentials.json",
-            "token", ".token",
-        ] {
+        for name in &["credentials.json", ".credentials.json", "token", ".token"] {
             let p = docker_cfg.join(name);
-            if p.is_file() { truncate(&p, &mut s, verbose); }
+            if p.is_file() {
+                truncate(&p, &mut s, verbose);
+            }
         }
 
         // Cached pull / trust metadata
         let trust = docker_cfg.join("trust");
-        if trust.is_dir() { remove_dir(&trust, &mut s, verbose); }
+        if trust.is_dir() {
+            remove_dir(&trust, &mut s, verbose);
+        }
     }
 
     // ── Podman (rootless) ──────────────────────────────────────────────────────
@@ -153,8 +190,10 @@ pub fn wipe_docker_artifacts(verbose: bool) -> DockerCoverStats {
     }
 
     if verbose {
-        eprintln!("[+] docker-cover: {} logs wiped, {} configs cleared, {} dirs removed, {} errors",
-            s.logs_wiped, s.configs_wiped, s.dirs_removed, s.errors);
+        eprintln!(
+            "[+] docker-cover: {} logs wiped, {} configs cleared, {} dirs removed, {} errors",
+            s.logs_wiped, s.configs_wiped, s.dirs_removed, s.errors
+        );
     }
     s
 }

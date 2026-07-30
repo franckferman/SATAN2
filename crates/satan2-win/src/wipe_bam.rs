@@ -13,16 +13,13 @@
 // DAM (Desktop Activity Moderator) mirrors BAM at:
 //   HKLM\SYSTEM\CurrentControlSet\Services\dam\State\UserSettings\{SID}\
 
-#![cfg(target_os = "windows")]
-
-use windows_sys::Win32::System::Registry::{
-    RegOpenKeyExW, RegDeleteKeyExW, RegEnumKeyExW,
-    RegCreateKeyExW, RegSetValueExW, RegCloseKey, RegQueryInfoKeyW,
-    HKEY_LOCAL_MACHINE, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, KEY_READ,
-    REG_BINARY,
-};
-use windows_sys::Win32::Foundation::ERROR_SUCCESS;
 use std::ptr;
+use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+use windows_sys::Win32::System::Registry::{
+    RegCloseKey, RegCreateKeyExW, RegDeleteKeyExW, RegEnumKeyExW, RegOpenKeyExW, RegQueryInfoKeyW,
+    RegSetValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, REG_BINARY,
+    REG_OPTION_NON_VOLATILE,
+};
 
 fn to_wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -35,54 +32,68 @@ fn wide_to_string(buf: &[u16]) -> String {
 
 // Windows FILETIME: 100-ns intervals since 1601-01-01
 fn unix_to_filetime(ts: i64) -> u64 {
-    (ts + 11_644_473_600) * 10_000_000
+    ((ts + 11_644_473_600) * 10_000_000) as u64
 }
 
 // ── LCG ──────────────────────────────────────────────────────────────────────
 
 struct Lcg(u64);
 impl Lcg {
-    fn new(seed: i64) -> Self { Lcg(seed as u64 ^ 0xbad_cafe_dead_1234) }
+    fn new(seed: i64) -> Self {
+        Lcg(seed as u64 ^ 0xbad_cafe_dead_1234)
+    }
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005)
-                       .wrapping_add(1_442_695_040_888_963_407);
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         self.0
     }
-    fn range(&mut self, lo: u64, hi: u64) -> u64 { lo + (self.next() % (hi - lo)) }
+    fn range(&mut self, lo: u64, hi: u64) -> u64 {
+        lo + (self.next() % (hi - lo))
+    }
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
 #[derive(Default)]
 pub struct BamStats {
-    pub keys_deleted:  u32,
+    pub keys_deleted: u32,
     pub entries_forged: u32,
-    pub errors:         u32,
+    pub errors: u32,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const BAM_ROOT: &str  = r"SYSTEM\CurrentControlSet\Services\bam\State\UserSettings";
-const DAM_ROOT: &str  = r"SYSTEM\CurrentControlSet\Services\dam\State\UserSettings";
+const BAM_ROOT: &str = r"SYSTEM\CurrentControlSet\Services\bam\State\UserSettings";
+const DAM_ROOT: &str = r"SYSTEM\CurrentControlSet\Services\dam\State\UserSettings";
 
 fn enumerate_sid_subkeys(root_path: &str) -> Vec<String> {
     let mut sids = Vec::new();
     let path_w = to_wide(root_path);
-    let mut hkey: isize = 0;
+    let mut hkey: HKEY = ptr::null_mut();
 
-    let ret = unsafe {
-        RegOpenKeyExW(HKEY_LOCAL_MACHINE, path_w.as_ptr(), 0, KEY_READ, &mut hkey)
-    };
-    if ret != ERROR_SUCCESS as i32 { return sids; }
+    let ret = unsafe { RegOpenKeyExW(HKEY_LOCAL_MACHINE, path_w.as_ptr(), 0, KEY_READ, &mut hkey) };
+    if ret != ERROR_SUCCESS {
+        return sids;
+    }
 
     let mut subkey_count: u32 = 0;
     let mut max_name: u32 = 0;
     unsafe {
         RegQueryInfoKeyW(
-            hkey, ptr::null_mut(), ptr::null_mut(), ptr::null_mut(),
-            &mut subkey_count, &mut max_name, ptr::null_mut(),
-            ptr::null_mut(), ptr::null_mut(), ptr::null_mut(),
-            ptr::null_mut(), ptr::null_mut(),
+            hkey,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut subkey_count,
+            &mut max_name,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
         );
     }
 
@@ -92,13 +103,17 @@ fn enumerate_sid_subkeys(root_path: &str) -> Vec<String> {
         let mut name_len = max_name as u32;
         let ret = unsafe {
             RegEnumKeyExW(
-                hkey, i,
-                name_buf.as_mut_ptr(), &mut name_len,
-                ptr::null_mut(), ptr::null_mut(), ptr::null_mut(),
+                hkey,
+                i,
+                name_buf.as_mut_ptr(),
+                &mut name_len,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
                 ptr::null_mut(),
             )
         };
-        if ret == ERROR_SUCCESS as i32 {
+        if ret == ERROR_SUCCESS {
             sids.push(wide_to_string(&name_buf[..name_len as usize]));
         }
     }
@@ -109,20 +124,35 @@ fn enumerate_sid_subkeys(root_path: &str) -> Vec<String> {
 
 fn delete_bam_sid_key(root_path: &str, sid: &str, verbose: bool) -> bool {
     let path_w = to_wide(root_path);
-    let sid_w  = to_wide(sid);
-    let mut hroot: isize = 0;
+    let sid_w = to_wide(sid);
+    let mut hroot: HKEY = ptr::null_mut();
 
-    if unsafe { RegOpenKeyExW(HKEY_LOCAL_MACHINE, path_w.as_ptr(), 0, KEY_ALL_ACCESS, &mut hroot) }
-        != ERROR_SUCCESS as i32
-    { return false; }
+    if unsafe {
+        RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            path_w.as_ptr(),
+            0,
+            KEY_ALL_ACCESS,
+            &mut hroot,
+        )
+    } != ERROR_SUCCESS
+    {
+        return false;
+    }
 
     let ret = unsafe { RegDeleteKeyExW(hroot, sid_w.as_ptr(), 0, 0) };
     unsafe { RegCloseKey(hroot) };
 
-    let ok = ret == ERROR_SUCCESS as i32;
+    let ok = ret == ERROR_SUCCESS;
     if verbose {
-        if ok { eprintln!("[+] wipe-bam: deleted {}\\{}", root_path, sid); }
-        else  { eprintln!("[!] wipe-bam: failed to delete {}\\{}: {}", root_path, sid, ret); }
+        if ok {
+            eprintln!("[+] wipe-bam: deleted {}\\{}", root_path, sid);
+        } else {
+            eprintln!(
+                "[!] wipe-bam: failed to delete {}\\{}: {}",
+                root_path, sid, ret
+            );
+        }
     }
     ok
 }
@@ -144,7 +174,10 @@ pub fn wipe_bam(verbose: bool) -> BamStats {
     }
 
     if verbose {
-        eprintln!("[+] wipe-bam: {} SID keys deleted, {} errors", s.keys_deleted, s.errors);
+        eprintln!(
+            "[+] wipe-bam: {} SID keys deleted, {} errors",
+            s.keys_deleted, s.errors
+        );
     }
     s
 }
@@ -197,7 +230,9 @@ pub fn forge_bam(ts_start: i64, ts_end: i64, n_entries: u32, verbose: bool) -> B
     let sid = match get_current_user_sid() {
         Some(s) => s,
         None => {
-            if verbose { eprintln!("[!] forge-bam: could not determine user SID"); }
+            if verbose {
+                eprintln!("[!] forge-bam: could not determine user SID");
+            }
             s.errors += 1;
             return s;
         }
@@ -205,39 +240,47 @@ pub fn forge_bam(ts_start: i64, ts_end: i64, n_entries: u32, verbose: bool) -> B
 
     let key_path = format!(r"{}\{}", BAM_ROOT, sid);
     let key_w = to_wide(&key_path);
-    let mut hkey: isize = 0;
+    let mut hkey: HKEY = ptr::null_mut();
     let mut disposition: u32 = 0;
 
     let ret = unsafe {
         RegCreateKeyExW(
-            HKEY_LOCAL_MACHINE, key_w.as_ptr(), 0,
-            ptr::null_mut(), REG_OPTION_NON_VOLATILE,
-            KEY_ALL_ACCESS, ptr::null(), &mut hkey, &mut disposition,
+            HKEY_LOCAL_MACHINE,
+            key_w.as_ptr(),
+            0,
+            ptr::null_mut(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_ALL_ACCESS,
+            ptr::null(),
+            &mut hkey,
+            &mut disposition,
         )
     };
-    if ret != ERROR_SUCCESS as i32 {
-        if verbose { eprintln!("[!] forge-bam: failed to open/create key: {}", ret); }
+    if ret != ERROR_SUCCESS {
+        if verbose {
+            eprintln!("[!] forge-bam: failed to open/create key: {}", ret);
+        }
         s.errors += 1;
         return s;
     }
 
     let n = (n_entries as usize).min(FAKE_EXE_PATHS.len());
-    for i in 0..n {
-        let path = FAKE_EXE_PATHS[i];
-        let ts   = ts_start + lcg.range(0, (ts_end - ts_start).max(1) as u64) as i64;
-        let ft   = unix_to_filetime(ts);
+    for &path in FAKE_EXE_PATHS.iter().take(n) {
+        let ts = ts_start + lcg.range(0, (ts_end - ts_start).max(1) as u64) as i64;
+        let ft = unix_to_filetime(ts);
 
         // Value data: FILETIME (8 bytes LE) + 8 zero bytes = 16 bytes total
         let mut data = [0u8; 16];
         data[0..8].copy_from_slice(&ft.to_le_bytes());
 
         let name_w = to_wide(path);
-        let ret = unsafe {
-            RegSetValueExW(hkey, name_w.as_ptr(), 0, REG_BINARY, data.as_ptr(), 16)
-        };
-        if ret == ERROR_SUCCESS as i32 {
+        let ret =
+            unsafe { RegSetValueExW(hkey, name_w.as_ptr(), 0, REG_BINARY, data.as_ptr(), 16) };
+        if ret == ERROR_SUCCESS {
             s.entries_forged += 1;
-            if verbose { eprintln!("[+] forge-bam: {} → ts={}", path, ts); }
+            if verbose {
+                eprintln!("[+] forge-bam: {} → ts={}", path, ts);
+            }
         } else {
             s.errors += 1;
         }

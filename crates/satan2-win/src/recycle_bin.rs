@@ -1,4 +1,3 @@
-#![cfg(target_os = "windows")]
 /*
  * recycle_bin.rs — Recycle Bin wiping
  *
@@ -14,25 +13,25 @@
  * Fallback: direct deletion of $R* and $I* files
  */
 
-use windows_sys::Win32::UI::Shell::SHEmptyRecycleBinW;
-use std::fs;
 use glob::glob;
+use std::fs;
+use windows_sys::Win32::UI::Shell::SHEmptyRecycleBinW;
 
 #[derive(Debug, Default)]
 pub struct RecycleBinStats {
     pub files_deleted: u32,
-    pub bytes_freed:   u64,
-    pub errors:        u32,
+    pub bytes_freed: u64,
+    pub errors: u32,
 }
 
 /// Use Shell API to empty the recycle bin (all drives, no confirm, no sound).
 fn shell_empty_recycle_bin() -> bool {
     const SHERB_NOCONFIRMATION: u32 = 0x00000001;
-    const SHERB_NOPROGRESSUI:   u32 = 0x00000002;
-    const SHERB_NOSOUND:        u32 = 0x00000004;
+    const SHERB_NOPROGRESSUI: u32 = 0x00000002;
+    const SHERB_NOSOUND: u32 = 0x00000004;
 
     let flags = SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND;
-    let r = unsafe { SHEmptyRecycleBinW(0, std::ptr::null(), flags) };
+    let r = unsafe { SHEmptyRecycleBinW(std::ptr::null_mut(), std::ptr::null(), flags) };
     r == 0 // S_OK
 }
 
@@ -41,12 +40,11 @@ fn direct_empty_recycle_bin(stats: &mut RecycleBinStats) {
     // Iterate all drive letters
     for drive in b'A'..=b'Z' {
         let base = format!("{}:\\$Recycle.Bin", drive as char);
-        if !std::path::Path::new(&base).exists() { continue; }
+        if !std::path::Path::new(&base).exists() {
+            continue;
+        }
 
-        for pattern in &[
-            format!(r"{}\*\$R*", base),
-            format!(r"{}\*\$I*", base),
-        ] {
+        for pattern in &[format!(r"{}\*\$R*", base), format!(r"{}\*\$I*", base)] {
             if let Ok(entries) = glob(pattern) {
                 for e in entries.flatten() {
                     let path = e.to_str().unwrap_or("");
@@ -54,7 +52,9 @@ fn direct_empty_recycle_bin(stats: &mut RecycleBinStats) {
                         stats.bytes_freed += meta.len();
                     }
                     match fs::remove_file(path) {
-                        Ok(()) => { stats.files_deleted += 1; }
+                        Ok(()) => {
+                            stats.files_deleted += 1;
+                        }
                         Err(e2) => {
                             eprintln!("[!] recycle_bin: {}: {}", path, e2);
                             stats.errors += 1;
@@ -74,10 +74,16 @@ pub fn wipe_recycle_bin(verbose: bool) -> RecycleBinStats {
         // Stats not available from Shell API
         stats.files_deleted = 1; // sentinel
     } else {
-        if verbose { eprintln!("[*] recycle_bin: Shell API failed, using direct deletion"); }
+        if verbose {
+            eprintln!("[*] recycle_bin: Shell API failed, using direct deletion");
+        }
         direct_empty_recycle_bin(&mut stats);
-        eprintln!("[+] recycle_bin: {} file(s) deleted, {} KiB freed, {} error(s)",
-            stats.files_deleted, stats.bytes_freed >> 10, stats.errors);
+        eprintln!(
+            "[+] recycle_bin: {} file(s) deleted, {} KiB freed, {} error(s)",
+            stats.files_deleted,
+            stats.bytes_freed >> 10,
+            stats.errors
+        );
     }
 
     stats

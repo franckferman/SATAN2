@@ -25,7 +25,9 @@ fn dev_size(f: &File) -> Result<u64> {
     let mut sz = 0u64;
     let r = unsafe { libc::ioctl(f.as_raw_fd(), BLKGETSIZE64, &mut sz as *mut u64) };
     if r < 0 {
-        return Err(format!("BLKGETSIZE64: errno={}", unsafe { *libc::__errno_location() }));
+        return Err(format!("BLKGETSIZE64: errno={}", unsafe {
+            *libc::__errno_location()
+        }));
     }
     Ok(sz)
 }
@@ -47,7 +49,10 @@ const GPT_SIGNATURE: &[u8; 8] = b"EFI PART";
 const LBA_SIZE: u64 = 512;
 
 pub fn fs_kill_gpt(dev: &str) -> Result<()> {
-    let mut f = OpenOptions::new().read(true).write(true).open(dev)
+    let mut f = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(dev)
         .map_err(|e| format!("open {}: {}", dev, e))?;
 
     let total_size = dev_size(&f)?;
@@ -55,7 +60,8 @@ pub fn fs_kill_gpt(dev: &str) -> Result<()> {
 
     // Read primary GPT header (LBA 1)
     let mut header_buf = [0u8; 512];
-    f.seek(SeekFrom::Start(LBA_SIZE)).map_err(|e| e.to_string())?;
+    f.seek(SeekFrom::Start(LBA_SIZE))
+        .map_err(|e| e.to_string())?;
     f.read_exact(&mut header_buf).map_err(|e| e.to_string())?;
 
     if &header_buf[..8] == GPT_SIGNATURE {
@@ -65,7 +71,7 @@ pub fn fs_kill_gpt(dev: &str) -> Result<()> {
         // Zero primary partition entries (LBA 2, 128 entries × 128 bytes = 16 KiB)
         zero_at(&mut f, 2 * LBA_SIZE, 128 * 128)?;
         // Zero primary header
-        zero_at(&mut f, 1 * LBA_SIZE, 512)?;
+        zero_at(&mut f, LBA_SIZE, 512)?;
 
         if alt_lba > 0 && alt_lba < total_lbas {
             // Backup entries start 32 LBAs before backup header
@@ -77,7 +83,7 @@ pub fn fs_kill_gpt(dev: &str) -> Result<()> {
         eprintln!("[+] GPT destroyed (primary + backup)");
     } else {
         eprintln!("[*] No GPT signature found, zeroing estimated locations");
-        zero_at(&mut f, 1 * LBA_SIZE, 512)?;
+        zero_at(&mut f, LBA_SIZE, 512)?;
         if total_lbas > 34 {
             zero_at(&mut f, (total_lbas - 1) * LBA_SIZE, 512)?;
         }
@@ -88,7 +94,9 @@ pub fn fs_kill_gpt(dev: &str) -> Result<()> {
 }
 
 pub fn fs_kill_mbr(dev: &str) -> Result<()> {
-    let mut f = OpenOptions::new().write(true).open(dev)
+    let mut f = OpenOptions::new()
+        .write(true)
+        .open(dev)
         .map_err(|e| format!("open {}: {}", dev, e))?;
     zero_at(&mut f, 0, 512)?;
     f.flush().map_err(|e| e.to_string())?;
@@ -105,17 +113,26 @@ pub fn fs_kill_partition_table(dev: &str) -> Result<()> {
 // ── ext4 ──────────────────────────────────────────────────────────────────────
 
 fn ext4_has_backup_sb(group: u64) -> bool {
-    if group == 0 || group == 1 { return true; }
+    if group == 0 || group == 1 {
+        return true;
+    }
     for base in [3u64, 5, 7] {
         let mut p = base;
-        while p < group { p *= base; }
-        if p == group { return true; }
+        while p < group {
+            p *= base;
+        }
+        if p == group {
+            return true;
+        }
     }
     false
 }
 
 pub fn fs_kill_ext4(dev: &str) -> Result<()> {
-    let mut f = OpenOptions::new().read(true).write(true).open(dev)
+    let mut f = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(dev)
         .map_err(|e| format!("open {}: {}", dev, e))?;
 
     // Primary superblock at offset 1024
@@ -125,7 +142,10 @@ pub fn fs_kill_ext4(dev: &str) -> Result<()> {
 
     let magic = u16::from_le_bytes([sb[56], sb[57]]);
     if magic != 0xEF53 {
-        return Err(format!("{}: ext4 magic not found (got 0x{:04x})", dev, magic));
+        return Err(format!(
+            "{}: ext4 magic not found (got 0x{:04x})",
+            dev, magic
+        ));
     }
 
     let log_block_size = u32::from_le_bytes(sb[24..28].try_into().unwrap());
@@ -134,11 +154,15 @@ pub fn fs_kill_ext4(dev: &str) -> Result<()> {
     let total_blocks = u32::from_le_bytes(sb[4..8].try_into().unwrap()) as u64;
     let num_groups = total_blocks.div_ceil(blocks_per_group);
 
-    eprintln!("[*] ext4: block_size={} blocks_per_group={} groups={}",
-        block_size, blocks_per_group, num_groups);
+    eprintln!(
+        "[*] ext4: block_size={} blocks_per_group={} groups={}",
+        block_size, blocks_per_group, num_groups
+    );
 
     for g in 0..num_groups {
-        if !ext4_has_backup_sb(g) { continue; }
+        if !ext4_has_backup_sb(g) {
+            continue;
+        }
 
         // Group 0: superblock at 1024; for block_size==1024 it's at block 1 + 1024
         let sb_offset = if g == 0 {
@@ -160,7 +184,10 @@ pub fn fs_kill_ext4(dev: &str) -> Result<()> {
 // ── XFS ───────────────────────────────────────────────────────────────────────
 
 pub fn fs_kill_xfs(dev: &str) -> Result<()> {
-    let mut f = OpenOptions::new().read(true).write(true).open(dev)
+    let mut f = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(dev)
         .map_err(|e| format!("open {}: {}", dev, e))?;
 
     let mut sb = [0u8; 512];
@@ -172,17 +199,21 @@ pub fn fs_kill_xfs(dev: &str) -> Result<()> {
     }
 
     // XFS superblock fields (big-endian)
-    let block_size  = u32::from_be_bytes(sb[4..8].try_into().unwrap()) as u64;
-    let total_blocks= u64::from_be_bytes(sb[8..16].try_into().unwrap());
-    let agblocks    = u32::from_be_bytes(sb[84..88].try_into().unwrap()) as u64;
-    let agcount     = u32::from_be_bytes(sb[88..92].try_into().unwrap()) as u64;
+    let block_size = u32::from_be_bytes(sb[4..8].try_into().unwrap()) as u64;
+    let total_blocks = u64::from_be_bytes(sb[8..16].try_into().unwrap());
+    let agblocks = u32::from_be_bytes(sb[84..88].try_into().unwrap()) as u64;
+    let agcount = u32::from_be_bytes(sb[88..92].try_into().unwrap()) as u64;
 
-    eprintln!("[*] XFS: block_size={} agblocks={} agcount={}",
-        block_size, agblocks, agcount);
+    eprintln!(
+        "[*] XFS: block_size={} agblocks={} agcount={}",
+        block_size, agblocks, agcount
+    );
 
     for ag in 0..agcount {
         let offset = ag * agblocks * block_size;
-        if offset >= total_blocks * block_size { break; }
+        if offset >= total_blocks * block_size {
+            break;
+        }
         zero_at(&mut f, offset, 512)?;
     }
 
@@ -197,23 +228,32 @@ const BTRFS_MAGIC: &[u8; 8] = b"_BHRfS_M";
 const BTRFS_SB_OFFSETS: [u64; 4] = [
     0x0001_0000,           // 64 KiB
     0x0400_0000,           // 64 MiB
-    0x4000_0000_00,        // 256 GiB
+    0x40_0000_0000,        // 256 GiB
     0x0004_0000_0000_0000, // 1 PiB
 ];
 
 pub fn fs_kill_btrfs(dev: &str) -> Result<()> {
-    let mut f = OpenOptions::new().read(true).write(true).open(dev)
+    let mut f = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(dev)
         .map_err(|e| format!("open {}: {}", dev, e))?;
 
     let size = dev_size(&f)?;
     let mut wiped = 0;
 
     for &off in &BTRFS_SB_OFFSETS {
-        if off + 4096 > size { continue; }
+        if off + 4096 > size {
+            continue;
+        }
 
         let mut probe = [0u8; 72]; // magic is at +64 in the superblock
-        if f.seek(SeekFrom::Start(off)).is_err() { continue; }
-        if f.read_exact(&mut probe).is_err() { continue; }
+        if f.seek(SeekFrom::Start(off)).is_err() {
+            continue;
+        }
+        if f.read_exact(&mut probe).is_err() {
+            continue;
+        }
 
         if &probe[64..72] == BTRFS_MAGIC {
             zero_at(&mut f, off, 4096)?;
@@ -222,7 +262,10 @@ pub fn fs_kill_btrfs(dev: &str) -> Result<()> {
     }
 
     if wiped == 0 {
-        return Err(format!("{}: Btrfs magic not found at any mirror offset", dev));
+        return Err(format!(
+            "{}: Btrfs magic not found at any mirror offset",
+            dev
+        ));
     }
 
     f.flush().map_err(|e| e.to_string())?;
@@ -233,7 +276,12 @@ pub fn fs_kill_btrfs(dev: &str) -> Result<()> {
 // ── Auto-detect and dispatch ───────────────────────────────────────────────────
 
 #[derive(Debug, PartialEq)]
-enum FsType { Ext4, Xfs, Btrfs, Unknown }
+enum FsType {
+    Ext4,
+    Xfs,
+    Btrfs,
+    Unknown,
+}
 
 fn detect_fs(dev: &str) -> FsType {
     let mut f = match OpenOptions::new().read(true).open(dev) {
@@ -246,21 +294,28 @@ fn detect_fs(dev: &str) -> FsType {
     // ext4: magic 0xEF53 at offset 1024+56
     if f.seek(SeekFrom::Start(1024)).is_ok() {
         let mut sb = [0u8; 2];
-        if f.seek(SeekFrom::Start(1024 + 56)).is_ok() && f.read_exact(&mut sb).is_ok() {
-            if u16::from_le_bytes(sb) == 0xEF53 { return FsType::Ext4; }
+        if f.seek(SeekFrom::Start(1024 + 56)).is_ok()
+            && f.read_exact(&mut sb).is_ok()
+            && u16::from_le_bytes(sb) == 0xEF53
+        {
+            return FsType::Ext4;
         }
     }
 
     // XFS: magic "XFSB" at offset 0
     if f.seek(SeekFrom::Start(0)).is_ok() {
         let mut magic = [0u8; 4];
-        if f.read_exact(&mut magic).is_ok() && &magic == b"XFSB" { return FsType::Xfs; }
+        if f.read_exact(&mut magic).is_ok() && &magic == b"XFSB" {
+            return FsType::Xfs;
+        }
     }
 
     // Btrfs: magic at 64KiB+64
     if f.seek(SeekFrom::Start(0x10000 + 64)).is_ok() {
         let mut magic = [0u8; 8];
-        if f.read_exact(&mut magic).is_ok() && &magic == BTRFS_MAGIC { return FsType::Btrfs; }
+        if f.read_exact(&mut magic).is_ok() && &magic == BTRFS_MAGIC {
+            return FsType::Btrfs;
+        }
     }
 
     let _ = probe; // suppress unused warning
@@ -269,9 +324,12 @@ fn detect_fs(dev: &str) -> FsType {
 
 pub fn fs_kill_filesystem(dev: &str) -> Result<()> {
     match detect_fs(dev) {
-        FsType::Ext4    => fs_kill_ext4(dev),
-        FsType::Xfs     => fs_kill_xfs(dev),
-        FsType::Btrfs   => fs_kill_btrfs(dev),
-        FsType::Unknown => Err(format!("{}: filesystem not recognized (ext4/XFS/Btrfs)", dev)),
+        FsType::Ext4 => fs_kill_ext4(dev),
+        FsType::Xfs => fs_kill_xfs(dev),
+        FsType::Btrfs => fs_kill_btrfs(dev),
+        FsType::Unknown => Err(format!(
+            "{}: filesystem not recognized (ext4/XFS/Btrfs)",
+            dev
+        )),
     }
 }

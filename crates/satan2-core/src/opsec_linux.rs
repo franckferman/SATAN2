@@ -72,7 +72,11 @@ fn append_if_absent(path: &str, marker: &str, content: &str) -> bool {
     }
     backup_file(path);
     // Ensure there is exactly one blank separator before the injected block
-    let sep = if existing.ends_with('\n') || existing.is_empty() { "" } else { "\n" };
+    let sep = if existing.ends_with('\n') || existing.is_empty() {
+        ""
+    } else {
+        "\n"
+    };
     let new = format!("{}{}{}", existing, sep, content);
     fs::write(path, new).is_ok()
 }
@@ -100,11 +104,12 @@ fn service_active(name: &str) -> bool {
 const JOURNALD_CONF: &str = "/etc/systemd/journald.conf";
 
 fn apply_journald_volatile(verbose: bool, stats: &mut OpsecLinuxStats) {
-    let content = fs::read_to_string(JOURNALD_CONF)
-        .unwrap_or_else(|_| "[Journal]\n".to_string());
+    let content = fs::read_to_string(JOURNALD_CONF).unwrap_or_else(|_| "[Journal]\n".to_string());
 
     if content.contains("Storage=volatile") {
-        if verbose { eprintln!("[*] journald: already Storage=volatile, skipping"); }
+        if verbose {
+            eprintln!("[*] journald: already Storage=volatile, skipping");
+        }
         stats.journald_volatile = true;
         return;
     }
@@ -113,18 +118,23 @@ fn apply_journald_volatile(verbose: bool, stats: &mut OpsecLinuxStats) {
 
     // Replace any existing Storage= directive (commented or not); remember whether we found one.
     let mut replaced = false;
-    let new_lines: Vec<String> = content.lines().map(|line| {
-        let t = line.trim();
-        if t.starts_with("Storage=") || t.starts_with("#Storage=") {
-            replaced = true;
-            "Storage=volatile".to_string()
-        } else {
-            line.to_string()
-        }
-    }).collect();
+    let new_lines: Vec<String> = content
+        .lines()
+        .map(|line| {
+            let t = line.trim();
+            if t.starts_with("Storage=") || t.starts_with("#Storage=") {
+                replaced = true;
+                "Storage=volatile".to_string()
+            } else {
+                line.to_string()
+            }
+        })
+        .collect();
 
     let mut new_content = new_lines.join("\n");
-    if !new_content.ends_with('\n') { new_content.push('\n'); }
+    if !new_content.ends_with('\n') {
+        new_content.push('\n');
+    }
 
     // No Storage= directive found: inject it right after [Journal].
     // If [Journal] is missing too, append the whole section.
@@ -138,18 +148,27 @@ fn apply_journald_volatile(verbose: bool, stats: &mut OpsecLinuxStats) {
 
     match fs::write(JOURNALD_CONF, &new_content) {
         Ok(()) => {
-            if verbose { eprintln!("[+] journald: set Storage=volatile in {}", JOURNALD_CONF); }
+            if verbose {
+                eprintln!("[+] journald: set Storage=volatile in {}", JOURNALD_CONF);
+            }
             if run_cmd("systemctl", &["restart", "systemd-journald"]) {
-                if verbose { eprintln!("[+] journald: systemd-journald restarted"); }
+                if verbose {
+                    eprintln!("[+] journald: systemd-journald restarted");
+                }
             } else {
-                if verbose { eprintln!("[!] journald: restart failed (config was still written)"); }
+                if verbose {
+                    eprintln!("[!] journald: restart failed (config was still written)");
+                }
                 stats.errors += 1;
             }
             stats.journald_volatile = true;
         }
         Err(e) => {
             if verbose {
-                eprintln!("[!] journald: write {}: {} — trying tmpfs fallback", JOURNALD_CONF, e);
+                eprintln!(
+                    "[!] journald: write {}: {} — trying tmpfs fallback",
+                    JOURNALD_CONF, e
+                );
             }
             stats.errors += 1;
             // Fallback: mount a tmpfs directly over /var/log/journal so new entries land in RAM.
@@ -164,21 +183,28 @@ fn apply_journal_tmpfs_fallback(verbose: bool, stats: &mut OpsecLinuxStats) {
 
     let rc = unsafe {
         libc::mount(
-            b"tmpfs\0".as_ptr()            as *const libc::c_char,
-            b"/var/log/journal\0".as_ptr() as *const libc::c_char,
-            b"tmpfs\0".as_ptr()            as *const libc::c_char,
+            c"tmpfs".as_ptr() as *const libc::c_char,
+            c"/var/log/journal".as_ptr() as *const libc::c_char,
+            c"tmpfs".as_ptr() as *const libc::c_char,
             libc::MS_NOSUID | libc::MS_NODEV,
-            b"mode=0755,size=64m\0".as_ptr() as *const libc::c_void,
+            c"mode=0755,size=64m".as_ptr() as *const libc::c_void,
         )
     };
 
     if rc == 0 {
-        if verbose { eprintln!("[+] journald: tmpfs mounted on /var/log/journal (fallback)"); }
+        if verbose {
+            eprintln!("[+] journald: tmpfs mounted on /var/log/journal (fallback)");
+        }
         stats.journald_volatile = true;
         let _ = run_cmd("systemctl", &["restart", "systemd-journald"]);
     } else {
         let errno = unsafe { *libc::__errno_location() };
-        if verbose { eprintln!("[!] journald: tmpfs fallback mount failed (errno {})", errno); }
+        if verbose {
+            eprintln!(
+                "[!] journald: tmpfs fallback mount failed (errno {})",
+                errno
+            );
+        }
         stats.errors += 1;
     }
 }
@@ -209,10 +235,14 @@ fn apply_histsize_zero(verbose: bool, stats: &mut OpsecLinuxStats) {
     // Write a profile.d dropin — picked up by all POSIX login shells.
     match fs::write("/etc/profile.d/no_history.sh", NO_HISTORY_PROFILE) {
         Ok(()) => {
-            if verbose { eprintln!("[+] history: wrote /etc/profile.d/no_history.sh"); }
+            if verbose {
+                eprintln!("[+] history: wrote /etc/profile.d/no_history.sh");
+            }
         }
         Err(e) => {
-            if verbose { eprintln!("[!] history: write /etc/profile.d/no_history.sh: {}", e); }
+            if verbose {
+                eprintln!("[!] history: write /etc/profile.d/no_history.sh: {}", e);
+            }
             stats.errors += 1;
         }
     }
@@ -220,9 +250,13 @@ fn apply_histsize_zero(verbose: bool, stats: &mut OpsecLinuxStats) {
     // Patch /etc/bash.bashrc (interactive non-login shells, Debian/Ubuntu layout).
     if Path::new("/etc/bash.bashrc").exists() {
         if append_if_absent("/etc/bash.bashrc", HIST_MARKER, NO_HISTORY_BLOCK) {
-            if verbose { eprintln!("[+] history: patched /etc/bash.bashrc"); }
+            if verbose {
+                eprintln!("[+] history: patched /etc/bash.bashrc");
+            }
         } else {
-            if verbose { eprintln!("[!] history: /etc/bash.bashrc patch failed"); }
+            if verbose {
+                eprintln!("[!] history: /etc/bash.bashrc patch failed");
+            }
             stats.errors += 1;
         }
     }
@@ -230,9 +264,13 @@ fn apply_histsize_zero(verbose: bool, stats: &mut OpsecLinuxStats) {
     // Patch /root/.bashrc.
     if Path::new("/root/.bashrc").exists() {
         if append_if_absent("/root/.bashrc", HIST_MARKER, NO_HISTORY_BLOCK) {
-            if verbose { eprintln!("[+] history: patched /root/.bashrc"); }
+            if verbose {
+                eprintln!("[+] history: patched /root/.bashrc");
+            }
         } else {
-            if verbose { eprintln!("[!] history: /root/.bashrc patch failed"); }
+            if verbose {
+                eprintln!("[!] history: /root/.bashrc patch failed");
+            }
             stats.errors += 1;
         }
     }
@@ -240,11 +278,18 @@ fn apply_histsize_zero(verbose: bool, stats: &mut OpsecLinuxStats) {
     // Patch every /home/*/.bashrc found on the system.
     if let Ok(entries) = glob("/home/*/.bashrc") {
         for entry in entries.flatten() {
-            let p = match entry.to_str() { Some(s) => s.to_string(), None => continue };
+            let p = match entry.to_str() {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
             if append_if_absent(&p, HIST_MARKER, NO_HISTORY_BLOCK) {
-                if verbose { eprintln!("[+] history: patched {}", p); }
+                if verbose {
+                    eprintln!("[+] history: patched {}", p);
+                }
             } else {
-                if verbose { eprintln!("[!] history: patch failed: {}", p); }
+                if verbose {
+                    eprintln!("[!] history: patch failed: {}", p);
+                }
                 stats.errors += 1;
             }
         }
@@ -264,19 +309,27 @@ const AUDIT_RULES_CONTENT: &str = "\
 fn apply_audit_silent(verbose: bool, stats: &mut OpsecLinuxStats) {
     // Disable at runtime — no new audit records from this point forward.
     if run_cmd("auditctl", &["-e", "0"]) {
-        if verbose { eprintln!("[+] audit: auditctl -e 0 applied"); }
+        if verbose {
+            eprintln!("[+] audit: auditctl -e 0 applied");
+        }
         stats.audit_disabled = true;
     } else {
-        if verbose { eprintln!("[!] audit: auditctl -e 0 failed (not installed or no CAP_AUDIT_CONTROL)"); }
+        if verbose {
+            eprintln!("[!] audit: auditctl -e 0 failed (not installed or no CAP_AUDIT_CONTROL)");
+        }
         stats.errors += 1;
     }
 
     // Prevent auditd from starting on next boot.
     if !run_cmd("systemctl", &["disable", "--now", "auditd"]) {
         // Not critical — auditd may be absent or managed differently.
-        if verbose { eprintln!("[*] audit: systemctl disable auditd skipped (not found or already disabled)"); }
-    } else {
-        if verbose { eprintln!("[+] audit: auditd systemd unit disabled"); }
+        if verbose {
+            eprintln!(
+                "[*] audit: systemctl disable auditd skipped (not found or already disabled)"
+            );
+        }
+    } else if verbose {
+        eprintln!("[+] audit: auditd systemd unit disabled");
     }
 
     // Persist -e 0 via audit rules so it survives auditd restarts.
@@ -284,10 +337,14 @@ fn apply_audit_silent(verbose: bool, stats: &mut OpsecLinuxStats) {
     if rules_dir.exists() || fs::create_dir_all(rules_dir).is_ok() {
         match fs::write(AUDIT_RULES_PATH, AUDIT_RULES_CONTENT) {
             Ok(()) => {
-                if verbose { eprintln!("[+] audit: persistent rule written to {}", AUDIT_RULES_PATH); }
+                if verbose {
+                    eprintln!("[+] audit: persistent rule written to {}", AUDIT_RULES_PATH);
+                }
             }
             Err(e) => {
-                if verbose { eprintln!("[!] audit: write {}: {}", AUDIT_RULES_PATH, e); }
+                if verbose {
+                    eprintln!("[!] audit: write {}: {}", AUDIT_RULES_PATH, e);
+                }
                 stats.errors += 1;
             }
         }
@@ -330,22 +387,34 @@ fn apply_sysctl_hardening(verbose: bool, stats: &mut OpsecLinuxStats) {
 
     match fs::write(SYSCTL_CONF_PATH, &content) {
         Ok(()) => {
-            if verbose { eprintln!("[+] sysctl: wrote {}", SYSCTL_CONF_PATH); }
+            if verbose {
+                eprintln!("[+] sysctl: wrote {}", SYSCTL_CONF_PATH);
+            }
             // Count non-blank, non-comment lines as the number of knobs.
-            let n: u32 = content.lines()
-                .filter(|l| { let t = l.trim(); !t.is_empty() && !t.starts_with('#') })
+            let n: u32 = content
+                .lines()
+                .filter(|l| {
+                    let t = l.trim();
+                    !t.is_empty() && !t.starts_with('#')
+                })
                 .count() as u32;
 
             if run_cmd("sysctl", &["-p", SYSCTL_CONF_PATH]) {
-                if verbose { eprintln!("[+] sysctl: applied {} knob(s)", n); }
+                if verbose {
+                    eprintln!("[+] sysctl: applied {} knob(s)", n);
+                }
             } else {
-                if verbose { eprintln!("[!] sysctl: sysctl -p returned non-zero (file still written for next boot)"); }
+                if verbose {
+                    eprintln!("[!] sysctl: sysctl -p returned non-zero (file still written for next boot)");
+                }
                 stats.errors += 1;
             }
             stats.sysctl_applied = n;
         }
         Err(e) => {
-            if verbose { eprintln!("[!] sysctl: write {}: {}", SYSCTL_CONF_PATH, e); }
+            if verbose {
+                eprintln!("[!] sysctl: write {}: {}", SYSCTL_CONF_PATH, e);
+            }
             stats.errors += 1;
         }
     }
@@ -360,7 +429,7 @@ const LIMITS_CONF_CONTENT: &str = "\
 * soft core 0
 ";
 
-const COREDUMP_CONF_DIR:  &str = "/etc/systemd/coredump.conf.d";
+const COREDUMP_CONF_DIR: &str = "/etc/systemd/coredump.conf.d";
 const COREDUMP_CONF_PATH: &str = "/etc/systemd/coredump.conf.d/opsec.conf";
 const COREDUMP_CONF_CONTENT: &str = "\
 [Coredump]
@@ -374,10 +443,14 @@ fn apply_coredump_disabled(verbose: bool, stats: &mut OpsecLinuxStats) {
     let _ = fs::create_dir_all("/etc/security/limits.d");
     match fs::write(LIMITS_CONF_PATH, LIMITS_CONF_CONTENT) {
         Ok(()) => {
-            if verbose { eprintln!("[+] coredump: wrote PAM limits to {}", LIMITS_CONF_PATH); }
+            if verbose {
+                eprintln!("[+] coredump: wrote PAM limits to {}", LIMITS_CONF_PATH);
+            }
         }
         Err(e) => {
-            if verbose { eprintln!("[!] coredump: write {}: {}", LIMITS_CONF_PATH, e); }
+            if verbose {
+                eprintln!("[!] coredump: write {}: {}", LIMITS_CONF_PATH, e);
+            }
             stats.errors += 1;
         }
     }
@@ -386,11 +459,18 @@ fn apply_coredump_disabled(verbose: bool, stats: &mut OpsecLinuxStats) {
     let _ = fs::create_dir_all(COREDUMP_CONF_DIR);
     match fs::write(COREDUMP_CONF_PATH, COREDUMP_CONF_CONTENT) {
         Ok(()) => {
-            if verbose { eprintln!("[+] coredump: wrote systemd config to {}", COREDUMP_CONF_PATH); }
+            if verbose {
+                eprintln!(
+                    "[+] coredump: wrote systemd config to {}",
+                    COREDUMP_CONF_PATH
+                );
+            }
             stats.coredump_disabled = true;
         }
         Err(e) => {
-            if verbose { eprintln!("[!] coredump: write {}: {}", COREDUMP_CONF_PATH, e); }
+            if verbose {
+                eprintln!("[!] coredump: write {}: {}", COREDUMP_CONF_PATH, e);
+            }
             stats.errors += 1;
         }
     }
@@ -417,8 +497,8 @@ fn tmp_is_tmpfs() -> bool {
         .any(|line| {
             let mut f = line.split_whitespace();
             // Format: device mount_point fstype ...
-            let _dev  = f.next().unwrap_or("");
-            let mp    = f.next().unwrap_or("");
+            let _dev = f.next().unwrap_or("");
+            let mp = f.next().unwrap_or("");
             let fstype = f.next().unwrap_or("");
             mp == "/tmp" && fstype == "tmpfs"
         })
@@ -426,35 +506,45 @@ fn tmp_is_tmpfs() -> bool {
 
 fn apply_tmpfs_tmp(verbose: bool, stats: &mut OpsecLinuxStats) {
     if tmp_is_tmpfs() {
-        if verbose { eprintln!("[*] tmpfs/tmp: /tmp is already a tmpfs"); }
+        if verbose {
+            eprintln!("[*] tmpfs/tmp: /tmp is already a tmpfs");
+        }
         stats.tmp_is_tmpfs = true;
     } else {
         // Mount a tmpfs over /tmp at runtime.
         let rc = unsafe {
             libc::mount(
-                b"tmpfs\0".as_ptr() as *const libc::c_char,
-                b"/tmp\0".as_ptr()  as *const libc::c_char,
-                b"tmpfs\0".as_ptr() as *const libc::c_char,
+                c"tmpfs".as_ptr() as *const libc::c_char,
+                c"/tmp".as_ptr() as *const libc::c_char,
+                c"tmpfs".as_ptr() as *const libc::c_char,
                 libc::MS_NOSUID | libc::MS_NODEV,
-                b"mode=1777\0".as_ptr() as *const libc::c_void,
+                c"mode=1777".as_ptr() as *const libc::c_void,
             )
         };
 
         if rc == 0 {
-            if verbose { eprintln!("[+] tmpfs/tmp: tmpfs mounted on /tmp"); }
+            if verbose {
+                eprintln!("[+] tmpfs/tmp: tmpfs mounted on /tmp");
+            }
             stats.tmp_is_tmpfs = true;
         } else {
             let errno = unsafe { *libc::__errno_location() };
-            if verbose { eprintln!("[!] tmpfs/tmp: mount failed (errno {})", errno); }
+            if verbose {
+                eprintln!("[!] tmpfs/tmp: mount failed (errno {})", errno);
+            }
             stats.errors += 1;
         }
     }
 
     // Persist the entry in /etc/fstab so it survives reboots.
     if append_if_absent(FSTAB_PATH, FSTAB_MARKER, FSTAB_TMP_ENTRY) {
-        if verbose { eprintln!("[+] tmpfs/tmp: fstab entry ensured"); }
+        if verbose {
+            eprintln!("[+] tmpfs/tmp: fstab entry ensured");
+        }
     } else {
-        if verbose { eprintln!("[!] tmpfs/tmp: fstab patch failed"); }
+        if verbose {
+            eprintln!("[!] tmpfs/tmp: fstab patch failed");
+        }
         stats.errors += 1;
     }
 }
@@ -474,26 +564,36 @@ const RSYSLOG_OPSEC_CONTENT: &str = "\
 fn apply_rsyslog_blocked(verbose: bool, stats: &mut OpsecLinuxStats) {
     // Only act when rsyslog is present; skip silently if the config dir is missing.
     if !Path::new("/etc/rsyslog.d").exists() {
-        if verbose { eprintln!("[*] rsyslog: /etc/rsyslog.d not found, skipping"); }
+        if verbose {
+            eprintln!("[*] rsyslog: /etc/rsyslog.d not found, skipping");
+        }
         return;
     }
 
     match fs::write(RSYSLOG_OPSEC_PATH, RSYSLOG_OPSEC_CONTENT) {
         Ok(()) => {
-            if verbose { eprintln!("[+] rsyslog: wrote {}", RSYSLOG_OPSEC_PATH); }
+            if verbose {
+                eprintln!("[+] rsyslog: wrote {}", RSYSLOG_OPSEC_PATH);
+            }
             // Restart rsyslog to pick up the new config (if it is running).
             if service_active("rsyslog") {
                 if run_cmd("systemctl", &["restart", "rsyslog"]) {
-                    if verbose { eprintln!("[+] rsyslog: service restarted"); }
+                    if verbose {
+                        eprintln!("[+] rsyslog: service restarted");
+                    }
                 } else {
-                    if verbose { eprintln!("[!] rsyslog: restart failed"); }
+                    if verbose {
+                        eprintln!("[!] rsyslog: restart failed");
+                    }
                     stats.errors += 1;
                 }
             }
             stats.rsyslog_blocked = true;
         }
         Err(e) => {
-            if verbose { eprintln!("[!] rsyslog: write {}: {}", RSYSLOG_OPSEC_PATH, e); }
+            if verbose {
+                eprintln!("[!] rsyslog: write {}: {}", RSYSLOG_OPSEC_PATH, e);
+            }
             stats.errors += 1;
         }
     }
@@ -507,21 +607,27 @@ const SSHD_QUIET_MARKER: &str = "LogLevel QUIET";
 
 fn apply_ssh_quiet(verbose: bool, stats: &mut OpsecLinuxStats) {
     if !Path::new(SSHD_CONFIG_PATH).exists() {
-        if verbose { eprintln!("[*] ssh: {} not found, skipping", SSHD_CONFIG_PATH); }
+        if verbose {
+            eprintln!("[*] ssh: {} not found, skipping", SSHD_CONFIG_PATH);
+        }
         return;
     }
 
     let content = match fs::read_to_string(SSHD_CONFIG_PATH) {
         Ok(c) => c,
         Err(e) => {
-            if verbose { eprintln!("[!] ssh: read {}: {}", SSHD_CONFIG_PATH, e); }
+            if verbose {
+                eprintln!("[!] ssh: read {}: {}", SSHD_CONFIG_PATH, e);
+            }
             stats.errors += 1;
             return;
         }
     };
 
     if content.contains(SSHD_QUIET_MARKER) {
-        if verbose { eprintln!("[*] ssh: already LogLevel QUIET"); }
+        if verbose {
+            eprintln!("[*] ssh: already LogLevel QUIET");
+        }
         stats.ssh_quiet = true;
         return;
     }
@@ -530,18 +636,23 @@ fn apply_ssh_quiet(verbose: bool, stats: &mut OpsecLinuxStats) {
 
     // Replace any existing LogLevel directive (active or commented) in-place.
     let mut replaced = false;
-    let new_lines: Vec<String> = content.lines().map(|line| {
-        let t = line.trim();
-        if t.starts_with("LogLevel") || t.starts_with("#LogLevel") {
-            replaced = true;
-            "LogLevel QUIET".to_string()
-        } else {
-            line.to_string()
-        }
-    }).collect();
+    let new_lines: Vec<String> = content
+        .lines()
+        .map(|line| {
+            let t = line.trim();
+            if t.starts_with("LogLevel") || t.starts_with("#LogLevel") {
+                replaced = true;
+                "LogLevel QUIET".to_string()
+            } else {
+                line.to_string()
+            }
+        })
+        .collect();
 
     let mut new_content = new_lines.join("\n");
-    if !new_content.ends_with('\n') { new_content.push('\n'); }
+    if !new_content.ends_with('\n') {
+        new_content.push('\n');
+    }
 
     // No existing LogLevel line: append one at the end.
     if !replaced {
@@ -550,14 +661,20 @@ fn apply_ssh_quiet(verbose: bool, stats: &mut OpsecLinuxStats) {
 
     match fs::write(SSHD_CONFIG_PATH, &new_content) {
         Ok(()) => {
-            if verbose { eprintln!("[+] ssh: LogLevel QUIET written to {}", SSHD_CONFIG_PATH); }
+            if verbose {
+                eprintln!("[+] ssh: LogLevel QUIET written to {}", SSHD_CONFIG_PATH);
+            }
             // Restart whichever sshd service is currently active.
             for svc in &["sshd", "ssh", "openssh-server"] {
                 if service_active(svc) {
                     if run_cmd("systemctl", &["restart", svc]) {
-                        if verbose { eprintln!("[+] ssh: {} restarted", svc); }
+                        if verbose {
+                            eprintln!("[+] ssh: {} restarted", svc);
+                        }
                     } else {
-                        if verbose { eprintln!("[!] ssh: {} restart failed", svc); }
+                        if verbose {
+                            eprintln!("[!] ssh: {} restart failed", svc);
+                        }
                         stats.errors += 1;
                     }
                     break;
@@ -566,7 +683,9 @@ fn apply_ssh_quiet(verbose: bool, stats: &mut OpsecLinuxStats) {
             stats.ssh_quiet = true;
         }
         Err(e) => {
-            if verbose { eprintln!("[!] ssh: write {}: {}", SSHD_CONFIG_PATH, e); }
+            if verbose {
+                eprintln!("[!] ssh: write {}: {}", SSHD_CONFIG_PATH, e);
+            }
             stats.errors += 1;
         }
     }
@@ -577,7 +696,8 @@ fn apply_ssh_quiet(verbose: bool, stats: &mut OpsecLinuxStats) {
 const CRON_OPSEC_PATH: &str = "/etc/cron.d/opsec_cleanup";
 // Single cron entry (all on one line) that truncates common history files
 // and flushes journal data every hour.  Runs as root.
-const CRON_OPSEC_CONTENT: &str = "# satan2: hourly trace cleanup — wipe history files and flush journal\n\
+const CRON_OPSEC_CONTENT: &str =
+    "# satan2: hourly trace cleanup — wipe history files and flush journal\n\
 0 * * * * root \
 find /root /home -maxdepth 2 -name '.bash_history'   -exec truncate -s 0 {} \\; 2>/dev/null; \
 find /root /home -maxdepth 2 -name '.zsh_history'    -exec truncate -s 0 {} \\; 2>/dev/null; \
@@ -586,16 +706,25 @@ journalctl --flush --rotate --vacuum-size=1 >/dev/null 2>&1\n";
 
 fn apply_cron_cleanup(verbose: bool, stats: &mut OpsecLinuxStats) {
     if !Path::new("/etc/cron.d").exists() {
-        if verbose { eprintln!("[*] cron: /etc/cron.d not found, skipping"); }
+        if verbose {
+            eprintln!("[*] cron: /etc/cron.d not found, skipping");
+        }
         return;
     }
 
     match fs::write(CRON_OPSEC_PATH, CRON_OPSEC_CONTENT) {
         Ok(()) => {
-            if verbose { eprintln!("[+] cron: hourly cleanup job written to {}", CRON_OPSEC_PATH); }
+            if verbose {
+                eprintln!(
+                    "[+] cron: hourly cleanup job written to {}",
+                    CRON_OPSEC_PATH
+                );
+            }
         }
         Err(e) => {
-            if verbose { eprintln!("[!] cron: write {}: {}", CRON_OPSEC_PATH, e); }
+            if verbose {
+                eprintln!("[!] cron: write {}: {}", CRON_OPSEC_PATH, e);
+            }
             stats.errors += 1;
         }
     }
@@ -612,7 +741,9 @@ fn apply_cron_cleanup(verbose: bool, stats: &mut OpsecLinuxStats) {
 pub fn apply_opsec_linux(verbose: bool) -> OpsecLinuxStats {
     let mut stats = OpsecLinuxStats::default();
 
-    if verbose { eprintln!("[*] opsec_linux: entering nolog/opsec mode..."); }
+    if verbose {
+        eprintln!("[*] opsec_linux: entering nolog/opsec mode...");
+    }
 
     apply_journald_volatile(verbose, &mut stats);
     apply_histsize_zero(verbose, &mut stats);
@@ -644,7 +775,9 @@ pub fn apply_opsec_linux(verbose: bool) -> OpsecLinuxStats {
 ///
 /// After restoring, relevant services are restarted to pick up the original config.
 pub fn revert_opsec_linux(verbose: bool) {
-    if verbose { eprintln!("[*] opsec_linux: reverting to pre-opsec state..."); }
+    if verbose {
+        eprintln!("[*] opsec_linux: reverting to pre-opsec state...");
+    }
 
     // ── Restore files that were patched in-place ───────────────────────────────
     let patched = [
@@ -660,11 +793,15 @@ pub fn revert_opsec_linux(verbose: bool) {
         if Path::new(&bak).exists() {
             match fs::copy(&bak, path) {
                 Ok(_) => {
-                    if verbose { eprintln!("[+] revert: restored {}", path); }
+                    if verbose {
+                        eprintln!("[+] revert: restored {}", path);
+                    }
                     let _ = fs::remove_file(&bak);
                 }
                 Err(e) => {
-                    if verbose { eprintln!("[!] revert: restore {}: {}", path, e); }
+                    if verbose {
+                        eprintln!("[!] revert: restore {}: {}", path, e);
+                    }
                 }
             }
         }
@@ -678,11 +815,15 @@ pub fn revert_opsec_linux(verbose: bool) {
             let orig_path = bak_path.trim_end_matches(".s2bak").to_string();
             match fs::copy(&bak_path, &orig_path) {
                 Ok(_) => {
-                    if verbose { eprintln!("[+] revert: restored {}", orig_path); }
+                    if verbose {
+                        eprintln!("[+] revert: restored {}", orig_path);
+                    }
                     let _ = fs::remove_file(&bak_path);
                 }
                 Err(e) => {
-                    if verbose { eprintln!("[!] revert: restore {}: {}", orig_path, e); }
+                    if verbose {
+                        eprintln!("[!] revert: restore {}: {}", orig_path, e);
+                    }
                 }
             }
         }
@@ -703,10 +844,14 @@ pub fn revert_opsec_linux(verbose: bool) {
         if Path::new(path).exists() {
             match fs::remove_file(path) {
                 Ok(()) => {
-                    if verbose { eprintln!("[+] revert: removed {}", path); }
+                    if verbose {
+                        eprintln!("[+] revert: removed {}", path);
+                    }
                 }
                 Err(e) => {
-                    if verbose { eprintln!("[!] revert: remove {}: {}", path, e); }
+                    if verbose {
+                        eprintln!("[!] revert: remove {}: {}", path, e);
+                    }
                 }
             }
         }
@@ -737,5 +882,7 @@ pub fn revert_opsec_linux(verbose: bool) {
         }
     }
 
-    if verbose { eprintln!("[+] opsec_linux: revert complete"); }
+    if verbose {
+        eprintln!("[+] opsec_linux: revert complete");
+    }
 }

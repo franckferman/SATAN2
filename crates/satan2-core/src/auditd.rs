@@ -18,9 +18,9 @@
  *  c) Use log_poison's destroy_file() which truncates in-place
  */
 
-use std::process::Command;
-use std::fs;
 use glob::glob;
+use std::fs;
+use std::process::Command;
 
 use crate::Result;
 
@@ -45,8 +45,8 @@ pub fn auditctl_enable() -> bool {
 // ── Wipe audit log files ──────────────────────────────────────────────────────
 
 fn overwrite_and_truncate(path: &str) -> Result<()> {
-    use std::io::Write;
     use crate::fill_random;
+    use std::io::Write;
 
     let meta = match fs::metadata(path) {
         Ok(m) => m,
@@ -79,9 +79,9 @@ fn overwrite_and_truncate(path: &str) -> Result<()> {
 
 #[derive(Debug, Default)]
 pub struct AuditStats {
-    pub disabled:       bool,
-    pub files_wiped:    u32,
-    pub errors:         u32,
+    pub disabled: bool,
+    pub files_wiped: u32,
+    pub errors: u32,
 }
 
 pub fn wipe_audit_logs(reenable: bool, stats: &mut AuditStats) -> Result<()> {
@@ -114,9 +114,13 @@ pub fn wipe_audit_logs(reenable: bool, stats: &mut AuditStats) -> Result<()> {
         if let Ok(entries) = glob(pattern) {
             for entry in entries.flatten() {
                 if let Some(p) = entry.to_str() {
-                    if p == current { continue; }
+                    if p == current {
+                        continue;
+                    }
                     match overwrite_and_truncate(p) {
-                        Ok(()) => { stats.files_wiped += 1; }
+                        Ok(()) => {
+                            stats.files_wiped += 1;
+                        }
                         Err(e) => {
                             eprintln!("[!] auditd: {}: {}", p, e);
                             stats.errors += 1;
@@ -135,7 +139,9 @@ pub fn wipe_audit_logs(reenable: bool, stats: &mut AuditStats) -> Result<()> {
         }
     }
 
-    eprintln!("[+] auditd: {} file(s) wiped, {} error(s)",
-        stats.files_wiped, stats.errors);
+    eprintln!(
+        "[+] auditd: {} file(s) wiped, {} error(s)",
+        stats.files_wiped, stats.errors
+    );
     Ok(())
 }

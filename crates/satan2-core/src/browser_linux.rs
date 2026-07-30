@@ -1,4 +1,3 @@
-#[cfg(target_os = "linux")]
 // browser_linux.rs — wipe browser history / cache artifacts on Linux
 //
 // Covered:
@@ -22,9 +21,9 @@ use walkdir::WalkDir;
 #[derive(Debug, Default)]
 pub struct BrowserLinuxStats {
     pub profiles_wiped: u32,
-    pub files_deleted:  u64,
-    pub bytes_freed:    u64,
-    pub errors:         u32,
+    pub files_deleted: u64,
+    pub bytes_freed: u64,
+    pub errors: u32,
 }
 
 // Files/dirs to wipe inside a Firefox/Librewolf profile directory
@@ -39,11 +38,11 @@ const FIREFOX_TARGETS: &[&str] = &[
     "downloads.sqlite",
     "favicons.sqlite",
     "sessionstore.jsonlz4",
-    "sessionstore-backups",  // directory
-    "storage",               // directory
-    "cache2",                // directory
-    "startupCache",          // directory
-    "thumbnails",            // directory
+    "sessionstore-backups", // directory
+    "storage",              // directory
+    "cache2",               // directory
+    "startupCache",         // directory
+    "thumbnails",           // directory
     "webappsstore.sqlite",
     "chromeappstore.sqlite",
 ];
@@ -66,18 +65,18 @@ const CHROMIUM_TARGETS: &[&str] = &[
     "Last Tabs",
     "Current Session",
     "Current Tabs",
-    "Cache",           // directory
-    "GPUCache",        // directory
-    "ShaderCache",     // directory
-    "Code Cache",      // directory
-    "blob_storage",    // directory
-    "Session Storage", // directory — LevelDB, stores session tokens
-    "Local Storage",   // directory — LevelDB, stores localStorage data
-    "IndexedDB",       // directory — LevelDB, stores structured DB data
-    "Extension State", // directory — LevelDB, extension key-value store
-    "Sync Data",       // directory — LevelDB, sync metadata
+    "Cache",                  // directory
+    "GPUCache",               // directory
+    "ShaderCache",            // directory
+    "Code Cache",             // directory
+    "blob_storage",           // directory
+    "Session Storage",        // directory — LevelDB, stores session tokens
+    "Local Storage",          // directory — LevelDB, stores localStorage data
+    "IndexedDB",              // directory — LevelDB, stores structured DB data
+    "Extension State",        // directory — LevelDB, extension key-value store
+    "Sync Data",              // directory — LevelDB, sync metadata
     "AutofillStrikeDatabase", // directory — LevelDB
-    "GCM Store",       // directory — LevelDB, push subscription metadata
+    "GCM Store",              // directory — LevelDB, push subscription metadata
 ];
 
 fn wipe_path(path: &Path, stats: &mut BrowserLinuxStats) {
@@ -91,8 +90,11 @@ fn wipe_path(path: &Path, stats: &mut BrowserLinuxStats) {
         }
     } else if path.is_dir() {
         // Walk directory tree collecting files, then remove
-        for entry in WalkDir::new(path).follow_links(false)
-            .contents_first(true).into_iter().flatten()
+        for entry in WalkDir::new(path)
+            .follow_links(false)
+            .contents_first(true)
+            .into_iter()
+            .flatten()
         {
             let p = entry.path();
             if entry.file_type().is_file() {
@@ -111,7 +113,9 @@ fn wipe_path(path: &Path, stats: &mut BrowserLinuxStats) {
 }
 
 fn wipe_firefox_dir(profiles_root: &Path, stats: &mut BrowserLinuxStats, verbose: bool) {
-    if !profiles_root.exists() { return; }
+    if !profiles_root.exists() {
+        return;
+    }
 
     let entries = match fs::read_dir(profiles_root) {
         Ok(e) => e,
@@ -120,14 +124,20 @@ fn wipe_firefox_dir(profiles_root: &Path, stats: &mut BrowserLinuxStats, verbose
 
     for entry in entries.flatten() {
         let profile = entry.path();
-        if !profile.is_dir() { continue; }
+        if !profile.is_dir() {
+            continue;
+        }
 
         // Heuristic: Firefox profile dirs contain places.sqlite or prefs.js
-        let is_profile = profile.join("places.sqlite").exists()
-            || profile.join("prefs.js").exists();
-        if !is_profile { continue; }
+        let is_profile =
+            profile.join("places.sqlite").exists() || profile.join("prefs.js").exists();
+        if !is_profile {
+            continue;
+        }
 
-        if verbose { eprintln!("[*] browser-linux: firefox profile: {}", profile.display()); }
+        if verbose {
+            eprintln!("[*] browser-linux: firefox profile: {}", profile.display());
+        }
 
         for target in FIREFOX_TARGETS {
             wipe_path(&profile.join(target), stats);
@@ -137,7 +147,9 @@ fn wipe_firefox_dir(profiles_root: &Path, stats: &mut BrowserLinuxStats, verbose
 }
 
 fn wipe_chromium_dir(browser_root: &Path, stats: &mut BrowserLinuxStats, verbose: bool) {
-    if !browser_root.exists() { return; }
+    if !browser_root.exists() {
+        return;
+    }
 
     let entries = match fs::read_dir(browser_root) {
         Ok(e) => e,
@@ -146,16 +158,21 @@ fn wipe_chromium_dir(browser_root: &Path, stats: &mut BrowserLinuxStats, verbose
 
     for entry in entries.flatten() {
         let profile = entry.path();
-        if !profile.is_dir() { continue; }
+        if !profile.is_dir() {
+            continue;
+        }
         let name = entry.file_name();
         let ns = name.to_string_lossy();
         // Chromium profile dirs: "Default", "Profile 1", "Profile 2", "Guest Profile"
-        let is_profile = ns == "Default"
-            || ns.starts_with("Profile ")
-            || ns.starts_with("Guest Profile");
-        if !is_profile { continue; }
+        let is_profile =
+            ns == "Default" || ns.starts_with("Profile ") || ns.starts_with("Guest Profile");
+        if !is_profile {
+            continue;
+        }
 
-        if verbose { eprintln!("[*] browser-linux: chromium profile: {}", profile.display()); }
+        if verbose {
+            eprintln!("[*] browser-linux: chromium profile: {}", profile.display());
+        }
 
         for target in CHROMIUM_TARGETS {
             wipe_path(&profile.join(target), stats);
@@ -181,7 +198,9 @@ fn home_dirs() -> Vec<String> {
     // Also include the invoking user's home if not root
     if unsafe { libc::getuid() } != 0 {
         if let Ok(h) = std::env::var("HOME") {
-            if !dirs.contains(&h) { dirs.push(h); }
+            if !dirs.contains(&h) {
+                dirs.push(h);
+            }
         }
     }
     dirs
@@ -195,12 +214,13 @@ pub fn wipe_browser_history_linux(verbose: bool) -> BrowserLinuxStats {
 
         // Firefox + Librewolf
         wipe_firefox_dir(&home.join(".mozilla/firefox"), &mut stats, verbose);
-        wipe_firefox_dir(&home.join(".librewolf"),       &mut stats, verbose);
+        wipe_firefox_dir(&home.join(".librewolf"), &mut stats, verbose);
 
         // Snap-packaged Firefox
         wipe_firefox_dir(
             &home.join("snap/firefox/common/.mozilla/firefox"),
-            &mut stats, verbose,
+            &mut stats,
+            verbose,
         );
 
         let config = home.join(".config");
@@ -220,18 +240,23 @@ pub fn wipe_browser_history_linux(verbose: bool) -> BrowserLinuxStats {
         // Snap-packaged Chromium
         wipe_chromium_dir(
             &home.join("snap/chromium/common/chromium"),
-            &mut stats, verbose,
+            &mut stats,
+            verbose,
         );
 
         // Flatpak browser dirs under XDG data home
         let xdg = home.join(".var/app");
         for (app_id, kind, subpath) in &[
-            ("org.mozilla.firefox",       "ff",   ".mozilla/firefox"),
-            ("org.chromium.Chromium",     "cr",   ".config/chromium"),
-            ("com.brave.Browser",         "cr",   ".config/BraveSoftware/Brave-Browser"),
-            ("com.google.Chrome",         "cr",   ".config/google-chrome"),
-            ("com.microsoft.Edge",        "cr",   ".config/microsoft-edge"),
-            ("com.opera.Opera",           "cr",   ".config/opera"),
+            ("org.mozilla.firefox", "ff", ".mozilla/firefox"),
+            ("org.chromium.Chromium", "cr", ".config/chromium"),
+            (
+                "com.brave.Browser",
+                "cr",
+                ".config/BraveSoftware/Brave-Browser",
+            ),
+            ("com.google.Chrome", "cr", ".config/google-chrome"),
+            ("com.microsoft.Edge", "cr", ".config/microsoft-edge"),
+            ("com.opera.Opera", "cr", ".config/opera"),
         ] {
             let base = xdg.join(app_id).join(subpath);
             if *kind == "ff" {
@@ -242,8 +267,12 @@ pub fn wipe_browser_history_linux(verbose: bool) -> BrowserLinuxStats {
         }
     }
 
-    eprintln!("[+] browser-linux: {} profile(s) wiped, {} file(s) ({} MiB), {} error(s)",
-        stats.profiles_wiped, stats.files_deleted,
-        stats.bytes_freed >> 20, stats.errors);
+    eprintln!(
+        "[+] browser-linux: {} profile(s) wiped, {} file(s) ({} MiB), {} error(s)",
+        stats.profiles_wiped,
+        stats.files_deleted,
+        stats.bytes_freed >> 20,
+        stats.errors
+    );
     stats
 }

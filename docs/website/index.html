@@ -975,7 +975,7 @@
           <div class="pillar">
             <div class="pillar-num">02 // ENCRYPT</div>
             <h4>Seal</h4>
-            <p>Triple-layer nested encryption: AES-256, Twofish-256, Camellia-256, Kuznyechik-256 in XTS mode. Survivors yield nothing.</p>
+            <p>XTS-mode encryption: AES-256, Twofish-256, Camellia-256, Kuznyechik-256 (GOST R 34.12-2015), or an AES→Twofish cascade. Survivors yield nothing.</p>
           </div>
           <div class="pillar">
             <div class="pillar-num">03 // ERASE</div>
@@ -1021,8 +1021,8 @@
       <div class="exhibit">
         <div class="exhibit-num">WARHEAD-03</div>
         <div class="exhibit-tag">Encryption · Multi-Layer</div>
-        <h3>Nested Triple Encryption</h3>
-        <p>AES-256-XTS → Twofish-256-XTS → Camellia-256-XTS → Kuznyechik-256. Independent keys per layer, PBKDF2-HMAC-SHA3-512 derivation. SATAN2CV container format.</p>
+        <h3>Multi-Cipher XTS Encryption</h3>
+        <p>AES-256, Twofish-256, Camellia-256, or Kuznyechik-256 (GOST R 34.12-2015) — plus an AES→Twofish cascade — all in XTS mode. PBKDF2-HMAC-SHA512 derivation. SATAN2CV container format; nested multi-layer encryption via the satan2-crypto API.</p>
         <span class="exhibit-status status-live">Live</span>
       </div>
 
@@ -1038,7 +1038,7 @@
         <div class="exhibit-num">WARHEAD-05</div>
         <div class="exhibit-tag">Windows · Execution Traces</div>
         <h3>Windows Forensic Wipe</h3>
-        <p>Prefetch, ShimCache, Amcache.hve, PCA, BAM/DAM, UserAssist, MUI Cache, BITS, $UsnJrnl, Event Logs, Windows Search (ESE + SQLite), SRUM, Timeline, JumpLists, RDP, PowerShell history.</p>
+        <p>Prefetch, ShimCache, Amcache.hve, BAM/DAM, UserAssist, MUI Cache, BITS, $UsnJrnl, Event Logs, Windows Search (ESE + SQLite), SRUM, Timeline, JumpLists, RDP, PowerShell history.</p>
         <span class="exhibit-status status-live">Live</span>
       </div>
 
@@ -1068,26 +1068,26 @@
 
       <div class="exhibit">
         <div class="exhibit-num">WARHEAD-09</div>
-        <div class="exhibit-tag">Metadata · Embedded — Planned</div>
+        <div class="exhibit-tag">Metadata · Embedded</div>
         <h3>Embedded Metadata Poisoning</h3>
-        <p>EXIF GPS coordinates (fake location), fake camera model, author, timestamps for JPEG/PNG/TIFF. PDF Creator/Author/ModDate. Office dc:creator / lastModifiedBy. Pure-Rust, no exiftool dependency.</p>
-        <span class="exhibit-status status-planned">Planned</span>
+        <p>EXIF GPS coordinates (fake location), fake camera model, author, timestamps for JPEG. PDF /Info Creator/Author/ModDate. MP4 mvhd timestamps + ©too encoder atom. Pure-Rust, no exiftool dependency.</p>
+        <span class="exhibit-status status-live">Live</span>
       </div>
 
       <div class="exhibit">
         <div class="exhibit-num">WARHEAD-10</div>
-        <div class="exhibit-tag">Misdirection · Traps — Planned</div>
+        <div class="exhibit-tag">Misdirection · Traps</div>
         <h3>Compression Traps & Archive Bombs</h3>
-        <p>ZIP bombs (42 KB → 4.5 PB), recursive ZIP nesting, malformed RAR/7z headers, ZIP quines. Seeded as decoys. Designed to crash or hang binwalk, Autopsy, and forensic carving pipelines.</p>
-        <span class="exhibit-status status-planned">Planned</span>
+        <p>Nested ZIP bombs (recursive nesting, massively expanding zeros), oversized ZIPs with fraudulent Central Directory sizes, malformed ZIPs (bad CRC, truncated data, corrupt signature, infinite recursion). Seeded as decoys to crash or hang naive extractors and forensic carving pipelines.</p>
+        <span class="exhibit-status status-live">Live</span>
       </div>
 
       <div class="exhibit">
         <div class="exhibit-num">WARHEAD-11</div>
-        <div class="exhibit-tag">Misdirection · Honey — Planned</div>
+        <div class="exhibit-tag">Misdirection · Honey</div>
         <h3>Steganography Honey Injection</h3>
-        <p>Plant fake "hidden messages" in JPEG/PNG LSB planes, PDF white-on-white layers, Office XML comments, WAV ID3 tags. Analyst finds "stego content" → decodes → discovers operationally empty garbage. Hours wasted.</p>
-        <span class="exhibit-status status-planned">Planned</span>
+        <p>Plant fake "hidden messages" in JPEG (post-EOI OutGuess-style payload), PNG (tEXt/zTXt chunks), and WAV (LSB-encoded PCM samples). Analyst finds "stego content" → decodes → discovers operationally empty garbage. Hours wasted.</p>
+        <span class="exhibit-status status-live">Live</span>
       </div>
 
       <div class="exhibit">
@@ -1172,13 +1172,12 @@
       <div class="ops-card">
         <div class="ops-platform">Linux — Wipe</div>
         <h3>Full Cleanup Sequence</h3>
-        <pre>satan2 wipe-logs
-satan2 wipe-journal
-satan2 wipe-browser
-satan2 wipe-wtmp
-satan2 wipe-shell-history
-satan2 wipe-ssh
-satan2 audit</pre>
+        <pre>satan2 log-poison --auth --syslog \
+  --wtmp --history --journal
+satan2 browser-linux
+satan2 proc-clean
+satan2 ssh-clean --destroy-all
+satan2 self-audit</pre>
       </div>
 
       <div class="ops-card">
@@ -1195,11 +1194,12 @@ satan2 forge-journal \
       <div class="ops-card">
         <div class="ops-platform">Linux — Metadata</div>
         <h3>Timestamp Scrambling</h3>
-        <pre>satan2 timestomp /opt/tools \
-  --strategy random-plausible
+        <pre>satan2 meta /opt/tools --recursive \
+  --ts random-plausible
 
-satan2 mask-signature ./binary
-satan2 strip-xattr /data/sensitive/</pre>
+satan2 meta ./binary --sig-mask
+satan2 meta /data/sensitive \
+  --recursive --xattrs</pre>
       </div>
 
       <div class="ops-card">
@@ -1207,8 +1207,8 @@ satan2 strip-xattr /data/sensitive/</pre>
         <h3>Hardware Erasure</h3>
         <pre>satan2 ata-erase /dev/sda
 satan2 nvme-erase /dev/nvme0
-satan2 wipe-swap
-satan2 fs-kill /dev/sdb</pre>
+satan2 swap
+satan2 kill-fs /dev/sdb</pre>
       </div>
 
       <div class="ops-card">
@@ -1222,31 +1222,30 @@ satan2 fs-kill /dev/sdb</pre>
         <div class="ops-platform">Windows — Forge</div>
         <h3>Plant Fake Activity Trail</h3>
         <pre>.\satan2_win.exe forge-all \
-  --ts-start 1745107200 \
-  --ts-end 1748736000</pre>
+  --n-forge 20 \
+  --ts-forge 1748736000</pre>
       </div>
 
       <div class="ops-card">
         <div class="ops-platform">Windows — Targeted</div>
         <h3>Execution Trace Forgery</h3>
         <pre>.\satan2_win.exe forge-prefetch \
-  --n 15 --ts-base 1748736000
+  --n-forge 15 --ts-forge 1748736000
 .\satan2_win.exe forge-shimcache \
-  --n 20 --ts-base 1748736000
+  --n-forge 20 --ts-forge 1748736000
 .\satan2_win.exe forge-bam \
-  --n 10 --ts-start 1745107200 \
-  --ts-end 1748736000</pre>
+  --n-forge 10 --ts-forge 1748736000</pre>
       </div>
 
       <div class="ops-card">
         <div class="ops-platform">Linux — Encrypt</div>
-        <h3>Triple-Layer Encryption</h3>
-        <pre>satan2 encrypt-layers \
-  /path/to/sensitive.tar
-<span style="color:#5a4f45"># → sensitive.tar.s2cv
-# Layer 1: AES-256-XTS
-# Layer 2: Twofish-256-XTS
-# Layer 3: Camellia-256-XTS</span></pre>
+        <h3>Cascade Encryption</h3>
+        <pre>satan2 encrypt-file \
+  /path/to/sensitive.tar \
+  sensitive.tar.cv \
+  --algo cascade
+<span style="color:#5a4f45"># Outer: AES-256-XTS
+# Inner: Twofish-256-XTS</span></pre>
       </div>
     </div>
   </div>
@@ -1296,7 +1295,7 @@ satan2 fs-kill /dev/sdb</pre>
           <span class="faq-icon">+</span>
         </div>
         <div class="faq-answer">
-          <p>EventID 3079 is written by the NTFS driver to the Application event log when the USN journal is deleted. Sysmon will log EID 1 on the <code>fsutil.exe</code> process creation if Sysmon is running. The <code>wipe-evtlog</code> command removes these traces. Run in order: <code>wipe-usn</code> → <code>wipe-evtlog</code>.</p>
+          <p>EventID 3079 is written by the NTFS driver to the Application event log when the USN journal is deleted. Sysmon will log EID 1 on the <code>fsutil.exe</code> process creation if Sysmon is running. The <code>event-log</code> command removes these traces. Run in order: <code>wipe-usn</code> → <code>event-log</code>.</p>
         </div>
       </div>
 

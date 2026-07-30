@@ -1,5 +1,4 @@
 use std::ptr::null;
-use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::System::Registry::*;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -9,7 +8,7 @@ fn wstr(s: &str) -> Vec<u16> {
 }
 
 fn set_sz(hkey: HKEY, name: &str, value: &str) -> bool {
-    let name_w  = wstr(name);
+    let name_w = wstr(name);
     let value_w = wstr(value);
     unsafe {
         RegSetValueExW(
@@ -23,15 +22,30 @@ fn set_sz(hkey: HKEY, name: &str, value: &str) -> bool {
     }
 }
 
+fn set_bin(hkey: HKEY, name: &str, value: &[u8]) -> bool {
+    let name_w = wstr(name);
+    unsafe {
+        RegSetValueExW(
+            hkey,
+            name_w.as_ptr(),
+            0,
+            REG_BINARY,
+            value.as_ptr(),
+            value.len() as u32,
+        ) == 0
+    }
+}
+
 fn open_or_create_hkcu(path: &str) -> Option<HKEY> {
     let path_w = wstr(path);
-    let mut hkey: HKEY = 0;
-    let mut disp: u32  = 0;
+    let mut hkey: HKEY = std::ptr::null_mut();
+    let mut disp: u32 = 0;
     let rc = unsafe {
         RegCreateKeyExW(
             HKEY_CURRENT_USER,
             path_w.as_ptr(),
-            0, null(),
+            0,
+            null(),
             REG_OPTION_NON_VOLATILE,
             KEY_SET_VALUE,
             null(),
@@ -39,7 +53,11 @@ fn open_or_create_hkcu(path: &str) -> Option<HKEY> {
             &mut disp,
         )
     };
-    if rc == 0 { Some(hkey) } else { None }
+    if rc == 0 {
+        Some(hkey)
+    } else {
+        None
+    }
 }
 
 // ── RunMRU ────────────────────────────────────────────────────────────────────
@@ -70,7 +88,7 @@ fn forge_run_mru(verbose: bool) -> u32 {
     let path = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU";
     let hkey = match open_or_create_hkcu(path) {
         Some(h) => h,
-        None    => return 0,
+        None => return 0,
     };
 
     let mru_limit = RUN_MRU.len().min(26); // a..z
@@ -92,7 +110,9 @@ fn forge_run_mru(verbose: bool) -> u32 {
     set_sz(hkey, "MRUList", &mru_reversed);
 
     unsafe { RegCloseKey(hkey) };
-    if verbose { eprintln!("[+] forge-reg-mru: {} RunMRU entries", written); }
+    if verbose {
+        eprintln!("[+] forge-reg-mru: {} RunMRU entries", written);
+    }
     written
 }
 
@@ -121,17 +141,21 @@ fn forge_typed_paths(verbose: bool) -> u32 {
     let path = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\TypedPaths";
     let hkey = match open_or_create_hkcu(path) {
         Some(h) => h,
-        None    => return 0,
+        None => return 0,
     };
 
     let mut written = 0u32;
     for (i, &p) in TYPED_PATHS.iter().enumerate() {
         let key_name = format!("{:03}", i + 1);
-        if set_sz(hkey, &key_name, p) { written += 1; }
+        if set_sz(hkey, &key_name, p) {
+            written += 1;
+        }
     }
 
     unsafe { RegCloseKey(hkey) };
-    if verbose { eprintln!("[+] forge-reg-mru: {} TypedPaths entries", written); }
+    if verbose {
+        eprintln!("[+] forge-reg-mru: {} TypedPaths entries", written);
+    }
     written
 }
 
@@ -165,17 +189,21 @@ fn forge_typed_urls(verbose: bool) -> u32 {
     let path = "Software\\Microsoft\\Internet Explorer\\TypedURLs";
     let hkey = match open_or_create_hkcu(path) {
         Some(h) => h,
-        None    => return 0,
+        None => return 0,
     };
 
     let mut written = 0u32;
     for (i, &url) in TYPED_URLS.iter().enumerate() {
         let key_name = format!("url{}", i + 1);
-        if set_sz(hkey, &key_name, url) { written += 1; }
+        if set_sz(hkey, &key_name, url) {
+            written += 1;
+        }
     }
 
     unsafe { RegCloseKey(hkey) };
-    if verbose { eprintln!("[+] forge-reg-mru: {} TypedURLs entries", written); }
+    if verbose {
+        eprintln!("[+] forge-reg-mru: {} TypedURLs entries", written);
+    }
     written
 }
 
@@ -185,14 +213,20 @@ fn forge_typed_urls(verbose: bool) -> u32 {
 const RECENT_DOCS: &[(&str, &str)] = &[
     (".docx", "C:\\Users\\admin\\Documents\\Rapport_Q2_2026.docx"),
     (".xlsx", "C:\\Users\\admin\\Documents\\Budget_2026.xlsx"),
-    (".pptx", "C:\\Users\\admin\\Desktop\\Presentation_COPIL.pptx"),
-    (".pdf",  "C:\\Users\\admin\\Downloads\\Contrat_service_2026.pdf"),
-    (".txt",  "C:\\Temp\\notes.txt"),
-    (".ps1",  "C:\\Users\\admin\\Documents\\deploy.ps1"),
-    (".csv",  "C:\\Users\\admin\\Documents\\export_users.csv"),
-    (".xml",  "C:\\inetpub\\wwwroot\\web.config"),
+    (
+        ".pptx",
+        "C:\\Users\\admin\\Desktop\\Presentation_COPIL.pptx",
+    ),
+    (
+        ".pdf",
+        "C:\\Users\\admin\\Downloads\\Contrat_service_2026.pdf",
+    ),
+    (".txt", "C:\\Temp\\notes.txt"),
+    (".ps1", "C:\\Users\\admin\\Documents\\deploy.ps1"),
+    (".csv", "C:\\Users\\admin\\Documents\\export_users.csv"),
+    (".xml", "C:\\inetpub\\wwwroot\\web.config"),
     (".json", "C:\\Users\\admin\\Documents\\config.json"),
-    (".log",  "C:\\Windows\\System32\\config\\Security.evtx"),
+    (".log", "C:\\Windows\\System32\\config\\Security.evtx"),
 ];
 
 fn forge_recent_docs(verbose: bool) -> u32 {
@@ -206,15 +240,20 @@ fn forge_recent_docs(verbose: bool) -> u32 {
         let subkey_path = format!("{}\\{}", base, ext);
         let hkey = match open_or_create_hkcu(&subkey_path) {
             Some(h) => h,
-            None    => continue,
+            None => continue,
         };
         // Entry "a" with null-terminated path (RecentDocs format: REG_SZ)
-        if set_sz(hkey, "0", path) { total += 1; }
-        set_sz(hkey, "MRUListEx", "\x00\x00\x00\x00\xff\xff\xff\xff"); // [0, -1]
+        if set_sz(hkey, "0", path) {
+            total += 1;
+        }
+        // MRUListEx is REG_BINARY: entry 0 (LE u32) followed by -1 terminator
+        set_bin(hkey, "MRUListEx", &[0, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF]); // [0, -1]
         unsafe { RegCloseKey(hkey) };
     }
 
-    if verbose && total > 0 { eprintln!("[+] forge-reg-mru: {} RecentDocs entries", total); }
+    if verbose && total > 0 {
+        eprintln!("[+] forge-reg-mru: {} RecentDocs entries", total);
+    }
     total
 }
 
@@ -222,17 +261,23 @@ fn forge_recent_docs(verbose: bool) -> u32 {
 
 pub struct RegistryMruForgeStats {
     pub entries_written: u32,
-    pub errors:          u32,
+    pub errors: u32,
 }
 
 pub fn forge_registry_mru(verbose: bool) -> RegistryMruForgeStats {
-    let mut s = RegistryMruForgeStats { entries_written: 0, errors: 0 };
+    let mut s = RegistryMruForgeStats {
+        entries_written: 0,
+        errors: 0,
+    };
     s.entries_written += forge_run_mru(verbose);
     s.entries_written += forge_typed_paths(verbose);
     s.entries_written += forge_typed_urls(verbose);
     s.entries_written += forge_recent_docs(verbose);
     if verbose {
-        eprintln!("[+] forge-reg-mru: {} total registry entries", s.entries_written);
+        eprintln!(
+            "[+] forge-reg-mru: {} total registry entries",
+            s.entries_written
+        );
     }
     s
 }

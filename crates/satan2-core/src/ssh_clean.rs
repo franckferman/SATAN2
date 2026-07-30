@@ -46,9 +46,14 @@ pub fn known_hosts_remove(path: &str, hosts: &[&str]) -> Result<usize> {
         let drop = hosts.iter().any(|h| {
             host_field.split(',').any(|entry| {
                 // Strip [brackets] and :port for comparison
-                let clean = entry.trim_start_matches('[')
-                    .split(']').next().unwrap_or(entry)
-                    .split(':').next().unwrap_or(entry);
+                let clean = entry
+                    .trim_start_matches('[')
+                    .split(']')
+                    .next()
+                    .unwrap_or(entry)
+                    .split(':')
+                    .next()
+                    .unwrap_or(entry);
                 clean == *h || entry == *h
             })
         });
@@ -62,7 +67,9 @@ pub fn known_hosts_remove(path: &str, hosts: &[&str]) -> Result<usize> {
 
     let tmp = format!("{}.s2tmp", path);
     let mut f = OpenOptions::new()
-        .write(true).create(true).truncate(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
         .open(&tmp)
         .map_err(|e| e.to_string())?;
 
@@ -71,11 +78,13 @@ pub fn known_hosts_remove(path: &str, hosts: &[&str]) -> Result<usize> {
     }
 
     if let Ok(meta) = fs::metadata(path) {
-        let _ = fs::set_permissions(&tmp,
-            fs::Permissions::from_mode(meta.permissions().mode()));
+        let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(meta.permissions().mode()));
     }
 
-    fs::rename(&tmp, path).map_err(|e| { let _ = fs::remove_file(&tmp); e.to_string() })?;
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        e.to_string()
+    })?;
     Ok(removed)
 }
 
@@ -99,20 +108,30 @@ pub fn authorized_keys_remove(path: &str, fragments: &[&str]) -> Result<usize> {
 
     for line in content.lines() {
         let drop = fragments.iter().any(|f| line.contains(f));
-        if drop { removed += 1; } else { out.push(line); }
+        if drop {
+            removed += 1;
+        } else {
+            out.push(line);
+        }
     }
 
     let tmp = format!("{}.s2tmp", path);
     let mut f = OpenOptions::new()
-        .write(true).create(true).truncate(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
         .open(&tmp)
         .map_err(|e| e.to_string())?;
-    for line in &out { writeln!(f, "{}", line).map_err(|e| e.to_string())?; }
-    if let Ok(meta) = fs::metadata(path) {
-        let _ = fs::set_permissions(&tmp,
-            fs::Permissions::from_mode(meta.permissions().mode()));
+    for line in &out {
+        writeln!(f, "{}", line).map_err(|e| e.to_string())?;
     }
-    fs::rename(&tmp, path).map_err(|e| { let _ = fs::remove_file(&tmp); e.to_string() })?;
+    if let Ok(meta) = fs::metadata(path) {
+        let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(meta.permissions().mode()));
+    }
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        e.to_string()
+    })?;
     Ok(removed)
 }
 
@@ -125,14 +144,12 @@ pub fn wipe_ssh_keys(ssh_dir: &Path) -> Result<u32> {
 
     for name in &key_patterns {
         let priv_key = ssh_dir.join(name);
-        let pub_key  = ssh_dir.join(format!("{}.pub", name));
+        let pub_key = ssh_dir.join(format!("{}.pub", name));
 
         for p in &[&priv_key, &pub_key] {
-            if p.exists() {
-                if crate::secure_zero_file(p.to_str().unwrap_or("")).is_ok() {
-                    let _ = fs::remove_file(p);
-                    wiped += 1;
-                }
+            if p.exists() && crate::secure_zero_file(p.to_str().unwrap_or("")).is_ok() {
+                let _ = fs::remove_file(p);
+                wiped += 1;
             }
         }
     }
@@ -154,19 +171,19 @@ pub fn wipe_ssh_config(ssh_dir: &Path) -> Result<()> {
 #[derive(Debug, Default)]
 pub struct SshCleanStats {
     pub known_hosts_removed: usize,
-    pub auth_keys_removed:   usize,
-    pub keys_wiped:          u32,
-    pub errors:              u32,
+    pub auth_keys_removed: usize,
+    pub keys_wiped: u32,
+    pub errors: u32,
 }
 
 pub struct SshCleanOpts<'a> {
     /// COVER: remove only entries matching these hosts; DESTROY: wipe all
-    pub hosts:          &'a [&'a str],
+    pub hosts: &'a [&'a str],
     /// Key comment fragments to remove from authorized_keys
-    pub key_fragments:  &'a [&'a str],
-    pub destroy_all:    bool,
-    pub wipe_keys:      bool,
-    pub wipe_config:    bool,
+    pub key_fragments: &'a [&'a str],
+    pub destroy_all: bool,
+    pub wipe_keys: bool,
+    pub wipe_config: bool,
 }
 
 pub fn ssh_clean(opts: &SshCleanOpts, stats: &mut SshCleanStats) -> Result<()> {
@@ -184,8 +201,13 @@ pub fn ssh_clean(opts: &SshCleanOpts, stats: &mut SshCleanStats) -> Result<()> {
     if opts.destroy_all {
         if known_hosts.exists() {
             match known_hosts_destroy(known_hosts_str) {
-                Ok(()) => { eprintln!("[+] ssh: known_hosts zeroed"); }
-                Err(e) => { eprintln!("[!] ssh: known_hosts: {}", e); stats.errors += 1; }
+                Ok(()) => {
+                    eprintln!("[+] ssh: known_hosts zeroed");
+                }
+                Err(e) => {
+                    eprintln!("[!] ssh: known_hosts: {}", e);
+                    stats.errors += 1;
+                }
             }
         }
     } else if !opts.hosts.is_empty() {
@@ -194,7 +216,10 @@ pub fn ssh_clean(opts: &SshCleanOpts, stats: &mut SshCleanStats) -> Result<()> {
                 stats.known_hosts_removed = n;
                 eprintln!("[+] ssh: {} known_hosts entry/entries removed", n);
             }
-            Err(e) => { eprintln!("[!] ssh: known_hosts: {}", e); stats.errors += 1; }
+            Err(e) => {
+                eprintln!("[!] ssh: known_hosts: {}", e);
+                stats.errors += 1;
+            }
         }
     }
 
@@ -205,7 +230,10 @@ pub fn ssh_clean(opts: &SshCleanOpts, stats: &mut SshCleanStats) -> Result<()> {
                 stats.auth_keys_removed = n;
                 eprintln!("[+] ssh: {} authorized_keys entry/entries removed", n);
             }
-            Err(e) => { eprintln!("[!] ssh: authorized_keys: {}", e); stats.errors += 1; }
+            Err(e) => {
+                eprintln!("[!] ssh: authorized_keys: {}", e);
+                stats.errors += 1;
+            }
         }
     }
 
@@ -215,7 +243,10 @@ pub fn ssh_clean(opts: &SshCleanOpts, stats: &mut SshCleanStats) -> Result<()> {
                 stats.keys_wiped = n;
                 eprintln!("[+] ssh: {} key file(s) wiped", n);
             }
-            Err(e) => { eprintln!("[!] ssh: key wipe: {}", e); stats.errors += 1; }
+            Err(e) => {
+                eprintln!("[!] ssh: key wipe: {}", e);
+                stats.errors += 1;
+            }
         }
     }
 

@@ -1,4 +1,3 @@
-#![cfg(target_os = "windows")]
 // amcache.rs — wipe Amcache.hve and AppCompatCache (ShimCache)
 //
 // Amcache.hve: C:\Windows\AppCompat\Programs\Amcache.hve
@@ -20,11 +19,11 @@
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::ptr;
 
 use windows_sys::Win32::Foundation::ERROR_SUCCESS;
 use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegDeleteValueW, RegOpenKeyExW,
-    HKEY_LOCAL_MACHINE, KEY_SET_VALUE,
+    RegCloseKey, RegDeleteValueW, RegOpenKeyExW, HKEY_LOCAL_MACHINE, KEY_SET_VALUE,
 };
 
 fn wide(s: &str) -> Vec<u16> {
@@ -33,10 +32,10 @@ fn wide(s: &str) -> Vec<u16> {
 
 #[derive(Debug, Default)]
 pub struct AmcacheStats {
-    pub files_deleted:      u32,
-    pub bytes_freed:        u64,
-    pub shimcache_cleared:  bool,
-    pub errors:             u32,
+    pub files_deleted: u32,
+    pub bytes_freed: u64,
+    pub shimcache_cleared: bool,
+    pub errors: u32,
 }
 
 fn disable_appcompat_tasks() {
@@ -68,12 +67,16 @@ fn wipe_amcache_files(stats: &mut AmcacheStats, verbose: bool) {
     ] {
         let path = format!("{}\\{}", base, name);
         let p = Path::new(&path);
-        if !p.exists() { continue; }
+        if !p.exists() {
+            continue;
+        }
 
         let size = fs::metadata(p).map(|m| m.len()).unwrap_or(0);
         match fs::remove_file(p) {
             Ok(()) => {
-                if verbose { eprintln!("[+] amcache: deleted {}", path); }
+                if verbose {
+                    eprintln!("[+] amcache: deleted {}", path);
+                }
                 stats.files_deleted += 1;
                 stats.bytes_freed += size;
             }
@@ -88,12 +91,18 @@ fn wipe_amcache_files(stats: &mut AmcacheStats, verbose: bool) {
 fn clear_shimcache(stats: &mut AmcacheStats, verbose: bool) {
     let key = r"SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache";
     let key_w = wide(key);
-    let mut hkey = 0isize;
+    let mut hkey = ptr::null_mut();
 
     let rc = unsafe {
-        RegOpenKeyExW(HKEY_LOCAL_MACHINE, key_w.as_ptr(), 0, KEY_SET_VALUE, &mut hkey)
+        RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            key_w.as_ptr(),
+            0,
+            KEY_SET_VALUE,
+            &mut hkey,
+        )
     };
-    if rc != ERROR_SUCCESS as i32 {
+    if rc != ERROR_SUCCESS {
         eprintln!("[!] amcache: ShimCache key open failed (rc={})", rc);
         stats.errors += 1;
         return;
@@ -103,11 +112,16 @@ fn clear_shimcache(stats: &mut AmcacheStats, verbose: bool) {
     let rc = unsafe { RegDeleteValueW(hkey, val_w.as_ptr()) };
     unsafe { RegCloseKey(hkey) };
 
-    if rc == ERROR_SUCCESS as i32 {
-        if verbose { eprintln!("[+] amcache: AppCompatCache registry value deleted"); }
+    if rc == ERROR_SUCCESS {
+        if verbose {
+            eprintln!("[+] amcache: AppCompatCache registry value deleted");
+        }
         stats.shimcache_cleared = true;
     } else {
-        eprintln!("[!] amcache: AppCompatCache delete failed (rc={}) — may require SYSTEM", rc);
+        eprintln!(
+            "[!] amcache: AppCompatCache delete failed (rc={}) — may require SYSTEM",
+            rc
+        );
         stats.errors += 1;
     }
 }
@@ -125,11 +139,15 @@ fn wipe_pca_files(stats: &mut AmcacheStats, verbose: bool) {
     ] {
         let path = format!("{}\\{}", pca_base, name);
         let p = Path::new(&path);
-        if !p.exists() { continue; }
+        if !p.exists() {
+            continue;
+        }
         let size = fs::metadata(p).map(|m| m.len()).unwrap_or(0);
         match fs::remove_file(p) {
             Ok(()) => {
-                if verbose { eprintln!("[+] amcache: deleted PCA artifact {}", path); }
+                if verbose {
+                    eprintln!("[+] amcache: deleted PCA artifact {}", path);
+                }
                 stats.files_deleted += 1;
                 stats.bytes_freed += size;
             }
@@ -138,7 +156,9 @@ fn wipe_pca_files(stats: &mut AmcacheStats, verbose: bool) {
                 if let Ok(f) = fs::OpenOptions::new().write(true).open(p) {
                     let _ = f.set_len(0);
                     stats.files_deleted += 1;
-                    if verbose { eprintln!("[+] amcache: truncated PCA artifact {}", path); }
+                    if verbose {
+                        eprintln!("[+] amcache: truncated PCA artifact {}", path);
+                    }
                 } else {
                     stats.errors += 1;
                 }
@@ -155,8 +175,12 @@ pub fn wipe_amcache(verbose: bool) -> AmcacheStats {
     wipe_pca_files(&mut stats, verbose);
     clear_shimcache(&mut stats, verbose);
 
-    eprintln!("[+] amcache: {} file(s) ({} MiB), shimcache={}, {} error(s)",
-        stats.files_deleted, stats.bytes_freed >> 20,
-        stats.shimcache_cleared, stats.errors);
+    eprintln!(
+        "[+] amcache: {} file(s) ({} MiB), shimcache={}, {} error(s)",
+        stats.files_deleted,
+        stats.bytes_freed >> 20,
+        stats.shimcache_cleared,
+        stats.errors
+    );
     stats
 }

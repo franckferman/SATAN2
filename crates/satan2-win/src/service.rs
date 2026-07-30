@@ -1,25 +1,16 @@
-#![cfg(target_os = "windows")]
-
-use windows_sys::Win32::{
-    Foundation::*,
-    System::Services::*,
-};
 use std::ffi::CString;
+use windows_sys::Win32::{Foundation::*, System::Services::*};
 
 pub fn disable_vss() -> Result<(), String> {
     unsafe {
-        let scm = OpenSCManagerA(
-            std::ptr::null(),
-            std::ptr::null(),
-            SC_MANAGER_ALL_ACCESS,
-        );
-        if scm == 0 {
+        let scm = OpenSCManagerA(std::ptr::null(), std::ptr::null(), SC_MANAGER_ALL_ACCESS);
+        if scm.is_null() {
             return Err(format!("OpenSCManager: err={}", GetLastError()));
         }
 
         let name = CString::new("VSS").unwrap();
         let svc = OpenServiceA(scm, name.as_ptr() as *const u8, SERVICE_ALL_ACCESS);
-        if svc == 0 {
+        if svc.is_null() {
             CloseServiceHandle(scm);
             return Err(format!("OpenService(VSS): err={}", GetLastError()));
         }

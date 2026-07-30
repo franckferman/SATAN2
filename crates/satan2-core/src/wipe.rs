@@ -14,10 +14,10 @@ use std::time::Instant;
 use crate::{fill_random, Result};
 
 const WIPE_BUF_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
-const ALIGN_SIZE:    usize = 4096;
+const ALIGN_SIZE: usize = 4096;
 
 const BLKGETSIZE64: libc::c_ulong = 0x80081272;
-const BLKFLSBUF:    libc::c_ulong = 0x00001261;
+const BLKFLSBUF: libc::c_ulong = 0x00001261;
 
 // ── Algorithm definitions ─────────────────────────────────────────────────────
 
@@ -40,24 +40,54 @@ enum PassType {
 }
 
 struct PassDef {
-    kind:  PassType,
+    kind: PassType,
     label: &'static str,
 }
 
 const DOD_PASSES: [PassDef; 3] = [
-    PassDef { kind: PassType::Byte(0x00), label: "0x00" },
-    PassDef { kind: PassType::Byte(0xFF), label: "0xFF" },
-    PassDef { kind: PassType::Random,     label: "random" },
+    PassDef {
+        kind: PassType::Byte(0x00),
+        label: "0x00",
+    },
+    PassDef {
+        kind: PassType::Byte(0xFF),
+        label: "0xFF",
+    },
+    PassDef {
+        kind: PassType::Random,
+        label: "random",
+    },
 ];
 
 const SCHNEIER_PASSES: [PassDef; 7] = [
-    PassDef { kind: PassType::Byte(0xFF), label: "0xFF" },
-    PassDef { kind: PassType::Byte(0x00), label: "0x00" },
-    PassDef { kind: PassType::Random,     label: "random" },
-    PassDef { kind: PassType::Random,     label: "random" },
-    PassDef { kind: PassType::Random,     label: "random" },
-    PassDef { kind: PassType::Random,     label: "random" },
-    PassDef { kind: PassType::Random,     label: "random" },
+    PassDef {
+        kind: PassType::Byte(0xFF),
+        label: "0xFF",
+    },
+    PassDef {
+        kind: PassType::Byte(0x00),
+        label: "0x00",
+    },
+    PassDef {
+        kind: PassType::Random,
+        label: "random",
+    },
+    PassDef {
+        kind: PassType::Random,
+        label: "random",
+    },
+    PassDef {
+        kind: PassType::Random,
+        label: "random",
+    },
+    PassDef {
+        kind: PassType::Random,
+        label: "random",
+    },
+    PassDef {
+        kind: PassType::Random,
+        label: "random",
+    },
 ];
 
 // Gutmann 35 passes — random bookends + MFM/RLL/PRML encoding patterns
@@ -103,24 +133,29 @@ const GUTMANN_PASSES: [PassDef; 35] = [
 // ── Options ───────────────────────────────────────────────────────────────────
 
 pub struct WipeOpts {
-    pub algo:        WipeAlgo,
+    pub algo: WipeAlgo,
     pub verify_last: bool,
-    pub verbose:     bool,
+    pub verbose: bool,
 }
 
 // ── Progress ──────────────────────────────────────────────────────────────────
 
 struct Progress {
-    start:      Instant,
+    start: Instant,
     last_print: Instant,
-    total:      u64,
-    written:    u64,
+    total: u64,
+    written: u64,
 }
 
 impl Progress {
     fn new(total: u64) -> Self {
         let now = Instant::now();
-        Progress { start: now, last_print: now, total, written: 0 }
+        Progress {
+            start: now,
+            last_print: now,
+            total,
+            written: 0,
+        }
     }
 
     fn update(&mut self, n: u64) {
@@ -143,25 +178,35 @@ impl Progress {
     fn done(&self) {
         let elapsed = (Instant::now() - self.start).as_secs_f64();
         let mbs = self.written as f64 / (1024.0 * 1024.0) / elapsed.max(0.001);
-        eprintln!("\r[+] {:.0} MiB in {:.1}s  ({:.1} MiB/s)          ",
-            self.written >> 20, elapsed, mbs);
+        eprintln!(
+            "\r[+] {:.0} MiB in {:.1}s  ({:.1} MiB/s)          ",
+            self.written >> 20,
+            elapsed,
+            mbs
+        );
     }
 }
 
 // ── Aligned buffer ────────────────────────────────────────────────────────────
 
 struct AlignedBuf {
-    ptr:    *mut u8,
+    ptr: *mut u8,
     layout: Layout,
-    len:    usize,
+    len: usize,
 }
 
 impl AlignedBuf {
     fn new(size: usize, align: usize) -> Option<Self> {
         let layout = Layout::from_size_align(size, align).ok()?;
         let ptr = unsafe { alloc(layout) };
-        if ptr.is_null() { return None; }
-        Some(AlignedBuf { ptr, layout, len: size })
+        if ptr.is_null() {
+            return None;
+        }
+        Some(AlignedBuf {
+            ptr,
+            layout,
+            len: size,
+        })
     }
 
     fn as_mut_slice(&mut self) -> &mut [u8] {
@@ -181,29 +226,38 @@ fn block_dev_size(fd: libc::c_int) -> Result<u64> {
     let mut size = 0u64;
     let r = unsafe { libc::ioctl(fd, BLKGETSIZE64, &mut size as *mut u64) };
     if r < 0 {
-        return Err(format!("BLKGETSIZE64 failed: errno={}", unsafe { *libc::__errno_location() }));
+        return Err(format!("BLKGETSIZE64 failed: errno={}", unsafe {
+            *libc::__errno_location()
+        }));
     }
     Ok(size)
 }
 
 // ── Single pass ───────────────────────────────────────────────────────────────
 
-fn do_pass(fd: libc::c_int, dev_size: u64, pass: &PassDef, pass_n: usize, total_n: usize) -> Result<()> {
+fn do_pass(
+    fd: libc::c_int,
+    dev_size: u64,
+    pass: &PassDef,
+    pass_n: usize,
+    total_n: usize,
+) -> Result<()> {
     eprintln!("[*] Pass {}/{}: {}", pass_n, total_n, pass.label);
 
-    let mut buf = AlignedBuf::new(WIPE_BUF_SIZE, ALIGN_SIZE)
-        .ok_or("aligned alloc failed")?;
+    let mut buf = AlignedBuf::new(WIPE_BUF_SIZE, ALIGN_SIZE).ok_or("aligned alloc failed")?;
 
     // Pre-fill non-random passes
     match pass.kind {
-        PassType::Zero          => buf.as_mut_slice().fill(0x00),
-        PassType::One           => buf.as_mut_slice().fill(0xFF),
-        PassType::Byte(b)       => buf.as_mut_slice().fill(b),
-        PassType::Pattern3(p)   => {
+        PassType::Zero => buf.as_mut_slice().fill(0x00),
+        PassType::One => buf.as_mut_slice().fill(0xFF),
+        PassType::Byte(b) => buf.as_mut_slice().fill(b),
+        PassType::Pattern3(p) => {
             let s = buf.as_mut_slice();
-            for (i, b) in s.iter_mut().enumerate() { *b = p[i % 3]; }
+            for (i, b) in s.iter_mut().enumerate() {
+                *b = p[i % 3];
+            }
         }
-        PassType::Random        => {} // filled per-chunk below
+        PassType::Random => {} // filled per-chunk below
     }
 
     let mut prog = Progress::new(dev_size);
@@ -211,7 +265,9 @@ fn do_pass(fd: libc::c_int, dev_size: u64, pass: &PassDef, pass_n: usize, total_
     // Seek to start
     let r = unsafe { libc::lseek64(fd, 0, libc::SEEK_SET) };
     if r < 0 {
-        return Err(format!("lseek failed: errno={}", unsafe { *libc::__errno_location() }));
+        return Err(format!("lseek failed: errno={}", unsafe {
+            *libc::__errno_location()
+        }));
     }
 
     let mut written_total: u64 = 0;
@@ -219,17 +275,19 @@ fn do_pass(fd: libc::c_int, dev_size: u64, pass: &PassDef, pass_n: usize, total_
         let chunk = WIPE_BUF_SIZE.min((dev_size - written_total) as usize);
         // Round down to 512-byte sector boundary for O_DIRECT
         let chunk = chunk & !(512 - 1);
-        if chunk == 0 { break; }
+        if chunk == 0 {
+            break;
+        }
 
         if pass.kind == PassType::Random {
             fill_random(&mut buf.as_mut_slice()[..chunk]);
         }
 
-        let w = unsafe {
-            libc::write(fd, buf.ptr as *const libc::c_void, chunk)
-        };
+        let w = unsafe { libc::write(fd, buf.ptr as *const libc::c_void, chunk) };
         if w < 0 {
-            return Err(format!("write failed: errno={}", unsafe { *libc::__errno_location() }));
+            return Err(format!("write failed: errno={}", unsafe {
+                *libc::__errno_location()
+            }));
         }
 
         written_total += w as u64;
@@ -253,33 +311,36 @@ fn do_verify(fd: libc::c_int, dev_size: u64, pass: &PassDef) -> Result<()> {
     }
 
     eprintln!("[*] Verifying last pass...");
-    let mut buf = AlignedBuf::new(WIPE_BUF_SIZE, ALIGN_SIZE)
-        .ok_or("aligned alloc failed")?;
+    let mut buf = AlignedBuf::new(WIPE_BUF_SIZE, ALIGN_SIZE).ok_or("aligned alloc failed")?;
 
     unsafe { libc::lseek64(fd, 0, libc::SEEK_SET) };
 
     let mut verified: u64 = 0;
     while verified < dev_size {
         let chunk = WIPE_BUF_SIZE.min((dev_size - verified) as usize) & !(512 - 1);
-        if chunk == 0 { break; }
+        if chunk == 0 {
+            break;
+        }
 
-        let r = unsafe {
-            libc::read(fd, buf.ptr as *mut libc::c_void, chunk)
-        };
-        if r <= 0 { break; }
+        let r = unsafe { libc::read(fd, buf.ptr as *mut libc::c_void, chunk) };
+        if r <= 0 {
+            break;
+        }
 
         let data = &buf.as_mut_slice()[..r as usize];
         let expected = match pass.kind {
-            PassType::Zero    => 0x00,
-            PassType::One     => 0xFF,
+            PassType::Zero => 0x00,
+            PassType::One => 0xFF,
             PassType::Byte(b) => b,
-            _                 => 0x00,
+            _ => 0x00,
         };
 
         for &b in data {
             if b != expected {
-                return Err(format!("Verify FAILED at offset {}: expected 0x{:02x}, got 0x{:02x}",
-                    verified, expected, b));
+                return Err(format!(
+                    "Verify FAILED at offset {}: expected 0x{:02x}, got 0x{:02x}",
+                    verified, expected, b
+                ));
             }
         }
         verified += r as u64;
@@ -292,8 +353,10 @@ fn do_verify(fd: libc::c_int, dev_size: u64, pass: &PassDef) -> Result<()> {
 
 pub fn wipe_device(dev_path: &str, opts: &WipeOpts) -> Result<()> {
     if opts.algo == WipeAlgo::Gutmann {
-        eprintln!("[!] Gutmann 35-pass: only meaningful for pre-2000 MFM/RLL drives. \
-                   On modern drives (NVMe/SATA/SSD), 1 random pass is equivalent.");
+        eprintln!(
+            "[!] Gutmann 35-pass: only meaningful for pre-2000 MFM/RLL drives. \
+                   On modern drives (NVMe/SATA/SSD), 1 random pass is equivalent."
+        );
     }
 
     let flags = libc::O_WRONLY | libc::O_DIRECT | libc::O_SYNC;
@@ -302,17 +365,22 @@ pub fn wipe_device(dev_path: &str, opts: &WipeOpts) -> Result<()> {
         libc::open(path.as_ptr(), flags)
     };
     if fd < 0 {
-        return Err(format!("open {}: errno={}", dev_path, unsafe { *libc::__errno_location() }));
+        return Err(format!("open {}: errno={}", dev_path, unsafe {
+            *libc::__errno_location()
+        }));
     }
 
     let dev_size = block_dev_size(fd)?;
     eprintln!("[*] Device: {}  Size: {} MiB", dev_path, dev_size >> 20);
 
     let passes: &[PassDef] = match opts.algo {
-        WipeAlgo::Random   => &[PassDef { kind: PassType::Random, label: "random" }],
-        WipeAlgo::Dod      => &DOD_PASSES,
+        WipeAlgo::Random => &[PassDef {
+            kind: PassType::Random,
+            label: "random",
+        }],
+        WipeAlgo::Dod => &DOD_PASSES,
         WipeAlgo::Schneier => &SCHNEIER_PASSES,
-        WipeAlgo::Gutmann  => &GUTMANN_PASSES,
+        WipeAlgo::Gutmann => &GUTMANN_PASSES,
     };
 
     let n = passes.len();

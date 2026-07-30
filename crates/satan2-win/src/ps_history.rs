@@ -1,4 +1,3 @@
-#![cfg(target_os = "windows")]
 /*
  * ps_history.rs — PowerShell command history removal
  *
@@ -8,17 +7,19 @@
  * Also covers Windows PowerShell ISE history and VS Code terminal history.
  */
 
-use std::fs;
 use std::env;
+use std::fs;
 
 #[derive(Debug, Default)]
 pub struct PsHistoryStats {
     pub files_wiped: u32,
-    pub errors:      u32,
+    pub errors: u32,
 }
 
 fn wipe_file(path: &str, stats: &mut PsHistoryStats) {
-    if !std::path::Path::new(path).exists() { return; }
+    if !std::path::Path::new(path).exists() {
+        return;
+    }
 
     match fs::OpenOptions::new().write(true).open(path) {
         Ok(f) => {
@@ -41,18 +42,28 @@ pub fn wipe_ps_history(verbose: bool) -> PsHistoryStats {
     let mut stats = PsHistoryStats::default();
 
     let appdata = env::var("APPDATA").unwrap_or_else(|_| {
-        format!(r"C:\Users\{}\AppData\Roaming",
-            env::var("USERNAME").unwrap_or_else(|_| "Default".into()))
+        format!(
+            r"C:\Users\{}\AppData\Roaming",
+            env::var("USERNAME").unwrap_or_else(|_| "Default".into())
+        )
     });
 
     let paths = [
-        format!(r"{}\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt", appdata),
+        format!(
+            r"{}\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt",
+            appdata
+        ),
         // PowerShell ISE
-        format!(r"{}\Microsoft\Windows\PowerShell\ISE\ISEHistory.ps1", appdata),
+        format!(
+            r"{}\Microsoft\Windows\PowerShell\ISE\ISEHistory.ps1",
+            appdata
+        ),
     ];
 
     for path in &paths {
-        if verbose { eprintln!("[*] ps_history: checking {}", path); }
+        if verbose {
+            eprintln!("[*] ps_history: checking {}", path);
+        }
         wipe_file(path, &mut stats);
     }
 
@@ -61,13 +72,20 @@ pub fn wipe_ps_history(verbose: bool) -> PsHistoryStats {
     if let Ok(rd) = fs::read_dir(users_base) {
         for entry in rd.flatten() {
             let user_path = entry.path().to_str().unwrap_or("").to_string();
-            let hist = format!(r"{}\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt", user_path);
-            if hist.contains("Default") || hist.contains("Public") { continue; }
+            let hist = format!(
+                r"{}\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt",
+                user_path
+            );
+            if hist.contains("Default") || hist.contains("Public") {
+                continue;
+            }
             wipe_file(&hist, &mut stats);
         }
     }
 
-    eprintln!("[+] ps_history: {} file(s) wiped, {} error(s)",
-        stats.files_wiped, stats.errors);
+    eprintln!(
+        "[+] ps_history: {} file(s) wiped, {} error(s)",
+        stats.files_wiped, stats.errors
+    );
     stats
 }

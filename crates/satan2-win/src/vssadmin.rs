@@ -1,5 +1,3 @@
-#![cfg(target_os = "windows")]
-
 use std::process::Command;
 
 pub fn delete_all(volume: Option<&str>) -> Result<(), String> {
