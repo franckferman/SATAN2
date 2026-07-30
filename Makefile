@@ -4,6 +4,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 SHELL := bash
+.SHELLFLAGS := -e -c
 .ONESHELL:
 .DEFAULT_GOAL := help
 
@@ -42,10 +43,25 @@ VERSION := $(shell cargo metadata --no-deps --format-version 1 \
                pkgs=[p for p in json.load(sys.stdin)['packages'] if p['name']=='satan2-cli']; \
                print(pkgs[0]['version'] if pkgs else 'unknown')" 2>/dev/null || echo "dev")
 
+# ── Cross-target guard ────────────────────────────────────────────────────────
+# ensure_target <rust-target>: install via rustup when available; on machines
+# without rustup, verify the target is already installed (e.g. via a distro
+# package) and fail with an actionable message instead of a raw rustc error.
+define ensure_target
+	@if command -v rustup &>/dev/null; then \
+		rustup target add $(1); \
+	elif ! [ -d "$$(rustc --print target-libdir --target $(1) 2>/dev/null)" ]; then \
+		echo "error: rust target '$(1)' is not installed and rustup was not found."; \
+		echo "       install it with 'rustup target add $(1)' (see rustup.rs) or via"; \
+		echo "       your distribution's Rust target package, then re-run make."; \
+		exit 1; \
+	fi
+endef
+
 # ─────────────────────────────────────────────────────────────────────────────
 .PHONY: help build release windows arm64 musl all \
         stealth hardened poly poly-n \
-        check fmt clippy audit fix \
+        check test fmt clippy audit fix \
         strip dist install uninstall \
         clean distclean tag
 
@@ -67,8 +83,9 @@ help:
 	@printf "  $(BOLD)make poly-n N=5$(RESET)   N polymorphic variants\n"
 	@printf "\n$(BOLD)Quality$(RESET)\n"
 	@printf "  $(BOLD)make check$(RESET)        cargo check --workspace\n"
+	@printf "  $(BOLD)make test$(RESET)         cargo test --workspace\n"
 	@printf "  $(BOLD)make fmt$(RESET)          cargo fmt --all\n"
-	@printf "  $(BOLD)make clippy$(RESET)       cargo clippy --workspace\n"
+	@printf "  $(BOLD)make clippy$(RESET)       cargo clippy --workspace --tests -- -D warnings\n"
 	@printf "  $(BOLD)make audit$(RESET)        cargo audit (advisory DB)\n"
 	@printf "  $(BOLD)make fix$(RESET)          cargo fix + fmt\n"
 	@printf "\n$(BOLD)Packaging$(RESET)\n"
@@ -97,14 +114,14 @@ release:
 
 musl:
 	@printf "$(DIM)→ static musl x86-64$(RESET)\n"
-	@rustup target add $(MUSL_TARGET) 2>/dev/null || true
+	$(call ensure_target,$(MUSL_TARGET))
 	RUSTFLAGS="$(RELEASE_FLAGS)" cargo build --release \
 		-p satan2-cli --target $(MUSL_TARGET)
 	@printf "$(RED)✓$(RESET) $(MUSL_BIN)\n"
 
 arm64:
 	@printf "$(DIM)→ cross linux arm64$(RESET)\n"
-	@rustup target add $(ARM64_TARGET) 2>/dev/null || true
+	$(call ensure_target,$(ARM64_TARGET))
 	@command -v aarch64-linux-gnu-gcc &>/dev/null || \
 		{ echo "Install: sudo apt install gcc-aarch64-linux-gnu"; exit 1; }
 	CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
@@ -114,7 +131,7 @@ arm64:
 
 windows:
 	@printf "$(DIM)→ cross windows x86-64$(RESET)\n"
-	@rustup target add $(WIN_TARGET) 2>/dev/null || true
+	$(call ensure_target,$(WIN_TARGET))
 	@command -v x86_64-w64-mingw32-gcc &>/dev/null || \
 		{ echo "Install: sudo apt install gcc-mingw-w64-x86-64"; exit 1; }
 	RUSTFLAGS="$(RELEASE_FLAGS)" cargo build --release \
@@ -183,11 +200,14 @@ poly-n:
 check:
 	cargo check --workspace
 
+test:
+	cargo test --workspace
+
 fmt:
 	cargo fmt --all
 
 clippy:
-	cargo clippy --workspace -- -D warnings
+	cargo clippy --workspace --tests -- -D warnings
 
 audit:
 	@command -v cargo-audit &>/dev/null || cargo install cargo-audit --quiet
@@ -237,15 +257,22 @@ dist: strip
 			-C $(CURDIR) README.md LICENSE; \
 		printf "$(RED)✓$(RESET) satan2-$$V-linux-arm64.tar.gz\n"; \
 	fi
-	# Windows
+	# Windows (zip if available, tar.gz fallback)
 	@if [ -f "$(WIN_BIN)" ]; then \
-		(cd $(TARGET_DIR)/$(WIN_TARGET)/release && \
-		zip $(CURDIR)/$(DIST_DIR)/satan2-$$V-windows-x86_64.zip \
-			satan2_win.exe); \
-		printf "$(RED)✓$(RESET) satan2-$$V-windows-x86_64.zip\n"; \
+		if command -v zip >/dev/null 2>&1; then \
+			(cd $(TARGET_DIR)/$(WIN_TARGET)/release && \
+			zip $(CURDIR)/$(DIST_DIR)/satan2-$$V-windows-x86_64.zip \
+				satan2_win.exe); \
+			printf "$(RED)✓$(RESET) satan2-$$V-windows-x86_64.zip\n"; \
+		else \
+			tar -czf $(DIST_DIR)/satan2-$$V-windows-x86_64.tar.gz \
+				-C $(TARGET_DIR)/$(WIN_TARGET)/release satan2_win.exe \
+				-C $(CURDIR) README.md LICENSE; \
+			printf "$(DIM)zip not found — satan2-$$V-windows-x86_64.tar.gz instead$(RESET)\n"; \
+		fi; \
 	fi
 	# Checksums
-	@cd $(DIST_DIR) && sha256sum satan2-$$V-* > SHA256SUMS && \
+	@(cd $(DIST_DIR) && sha256sum satan2-$$V-* > SHA256SUMS) && \
 		printf "$(RED)✓$(RESET) SHA256SUMS\n"
 	@printf "$(RED)$(BOLD)✓ dist/$(RESET)\n"
 	@ls -lh $(DIST_DIR)/

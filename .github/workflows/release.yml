@@ -9,8 +9,28 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Run test suite
+        run: cargo test --workspace
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --tests -- -D warnings
+
   build:
     name: Build — ${{ matrix.label }}
+    needs: test
     runs-on: ubuntu-latest
 
     strategy:
@@ -131,12 +151,6 @@ jobs:
 
       - name: List artifacts
         run: ls -lh artifacts/
-
-      - name: Extract changelog excerpt
-        id: changelog
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         env:
